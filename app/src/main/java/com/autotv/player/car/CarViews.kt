@@ -32,7 +32,7 @@ class SeekView(context: Context) : View(context) {
             canvas.drawRoundRect(rect, trackH / 2, trackH / 2, paint)
         }
         bar(left, right, 0x44FFFFFF)
-        bar(left, left + (right - left) * buffered.coerceIn(0f, 1f), 0x88FFFFFF)
+        bar(left, left + (right - left) * buffered.coerceIn(0f, 1f), 0x88FFFFFF.toInt())
         val x = left + (right - left) * progress.coerceIn(0f, 1f)
         bar(left, x, 0xFFFF2D55.toInt())
         paint.color = 0xFFFF2D55.toInt()
