@@ -1,55 +1,37 @@
-# AutoTV
+# AutoTV (v0.2.0)
 
-Player de TV (listas M3U/IPTV) e YouTube para **Android**, com tela para o **Android Auto**.
-Projeto original, sem relação com o APTV.
+Player de TV (listas M3U/IPTV) e YouTube para Android, com tela para o Android Auto.
 
-> **Status:** o código foi escrito mas **ainda não foi compilado nem testado em um aparelho/carro**
-> (o ambiente onde foi criado não tem o Android SDK). Só o parser de M3U foi testado.
-> Espere ajustar um ou outro erro de compilação e a parte do carro precisa de teste real.
+> **Status:** o código NUNCA foi compilado nem testado em aparelho (o ambiente onde foi escrito não tem o
+> Android SDK). Só o parser de M3U foi testado. Espere corrigir erros de compilação e ajustes no carro.
 
-## O que faz
-- **Listas M3U**: por URL ou arquivo; busca por canal/categoria; atualizar; favoritos.
-- **YouTube**: busca, colar link, *compartilhar do app do YouTube para o AutoTV*, importar playlist (link com `list=`).
-- **Android Auto**: abre pelo launcher do carro, navega por Favoritos / listas / categorias / busca no YouTube
-  e mostra o vídeo na tela. Ao **voltar para a lista**, o vídeo some mas o **áudio continua**.
+## O que tem
+**Celular**: abas Início (Em alta / Ao vivo / Histórico, miniaturas, busca, link colado ou compartilhado),
+Seguindo (canais do YouTube + importar `subscriptions.csv` do Google Takeout), TV (listas M3U) e Biblioteca
+(favoritos). Player próprio: barra de progresso, ao vivo, qualidade, idioma do áudio, legendas (manuais e
+automáticas), tela cheia, barra de brilho lateral. O título some junto com os controles.
 
-## Como gerar o APK
+**Carro (Android Auto)**: Início do YouTube em grade com miniaturas, Ao vivo, Seguindo, busca, histórico,
+favoritos e listas. Player desenhado numa tela virtual (VirtualDisplay) com botões, barra de progresso,
+±10 s, brilho (+/−), qualidade, áudio e legendas. Em Biblioteca há um interruptor "Interface avançada no
+carro": se a tela do carro ficar preta, desligue para usar o modo simples.
 
-### Opção A: sem computador potente (GitHub)
-1. Crie um repositório no GitHub e envie esta pasta inteira (incluindo `.github/`).
-2. Aba **Actions** → **Build APK** → aguarde (~5-10 min).
-3. Baixe o artefato **AutoTV-debug-apk** e extraia o `app-debug.apk`.
+**Login com conta Google: NÃO existe.** A biblioteca de YouTube usada não suporta contas. No lugar há
+"Seguindo" (importa suas inscrições pelo Takeout).
 
-### Opção B: Android Studio
-Abra a pasta no Android Studio, aguarde o sync e use **Build > Build APK(s)**.
+## Gerar o APK (GitHub)
+1. Envie esta pasta para o repositório (`git add -A`, `git commit`, `git push`). O arquivo
+   `.github/workflows/build.yml` gera o APK na aba **Actions** (artefato `AutoTV-debug-apk`).
+2. O APK agora é assinado com uma chave fixa (`app/debug.keystore`): novas versões instalam POR CIMA
+   da anterior. **Só desta vez**, desinstale a versão antiga antes (a assinatura mudou).
 
-## Instalar no celular (Xiaomi)
-Ative "Instalar apps desconhecidos" para o app que abriu o APK. Se o Play Protect bloquear,
-toque em "Instalar mesmo assim" (ou desative a verificação temporariamente).
+## Android Auto
+Veja as configurações: modo desenvolvedor (10 toques em "Versão"), **Fontes desconhecidas** ligado e o app
+precisa aparecer em "Personalizar tela de início". Se não aparecer, instale com KingInstaller + Shizuku.
 
-## Habilitar no Android Auto (Android 14)
-1. Android Auto → Configurações → toque **10 vezes** em "Versão" → confirme modo desenvolvedor.
-2. Menu ⋮ → **Configurações do desenvolvedor** → ative **Fontes desconhecidas**.
-3. Configurações do Android Auto → **Personalizar tela de início/launcher** → habilite **AutoTV**.
-4. Conecte ao carro e abra **AutoTV** no launcher.
-
-## Se não aparecer / não funcionar
-- Reinicie o Android Auto e reconecte; confira o passo 2 e o 3.
-- Tela preta no carro: nem toda central cede a "superfície" para apps de navegação. Teste em outro veículo.
-- **YouTube parou de tocar**: o YouTube muda com frequência. Atualize a versão do `NewPipeExtractor`
-  em `app/build.gradle.kts` (veja as releases do projeto) e gere o APK de novo.
-- Canais M3U que não abrem: alguns provedores exigem um User-Agent específico (`Http.UA_IPTV`).
+## Se o YouTube parar
+Atualize `NewPipeExtractor` em `app/build.gradle.kts` (releases em github.com/TeamNewPipe/NewPipeExtractor).
 
 ## Uso responsável
-Assista vídeo **somente com o carro parado**. Com o carro em movimento, volte para a lista e use só o áudio.
-Use apenas listas/conteúdo que você tem direito de acessar. Extrair streams do YouTube pode violar os
-termos de uso do serviço.
-
-## Licença
-Usa o NewPipeExtractor (GPL-3.0), portanto este projeto deve ser distribuído sob GPL-3.0.
-
-## Estrutura
-- `data/` M3uParser, Store (JSON), YouTube (NewPipeExtractor + OkHttp)
-- `player/PlayerHub.kt` um único ExoPlayer para celular e carro
-- `ui/` interface do celular (Jetpack Compose)
-- `car/` telas do Android Auto (Car App Library: listas, busca e `NavigationTemplate` com a superfície de vídeo)
+Vídeo só com o carro parado. Com o carro em movimento use somente o áudio (volte para a lista).
+Extrair streams do YouTube pode violar os termos do serviço. Licença: GPL-3.0 (NewPipeExtractor).

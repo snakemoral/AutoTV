@@ -7,8 +7,10 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
-/** Persistência simples em JSON (playlists e favoritos), compartilhada pelo app e pelo carro. */
+/** Persistência simples em JSON (playlists, favoritos, histórico e canais seguidos). */
 object Store {
+    private const val MAX_HISTORY = 60
+
     private lateinit var dir: File
     private val lock = Any()
 
@@ -18,14 +20,23 @@ object Store {
     private val _favorites = MutableStateFlow<List<Item>>(emptyList())
     val favorites: StateFlow<List<Item>> = _favorites
 
+    private val _history = MutableStateFlow<List<Item>>(emptyList())
+    val history: StateFlow<List<Item>> = _history
+
+    private val _following = MutableStateFlow<List<Channel>>(emptyList())
+    val following: StateFlow<List<Channel>> = _following
+
     fun init(context: Context) {
         dir = context.filesDir
         synchronized(lock) {
             _playlists.value = runCatching { readPlaylists() }.getOrDefault(emptyList())
-            _favorites.value = runCatching { readFavorites() }.getOrDefault(emptyList())
+            _favorites.value = runCatching { readItems("favorites.json") }.getOrDefault(emptyList())
+            _history.value = runCatching { readItems("history.json") }.getOrDefault(emptyList())
+            _following.value = runCatching { readChannels() }.getOrDefault(emptyList())
         }
     }
 
+    // ---- playlists ----
     fun putPlaylist(p: Playlist) = synchronized(lock) {
         val list = _playlists.value.filterNot { it.id == p.id } + p
         _playlists.value = list
@@ -38,35 +49,91 @@ object Store {
         writePlaylists(list)
     }
 
+    // ---- favoritos ----
     fun toggleFavorite(item: Item) = synchronized(lock) {
         val cur = _favorites.value
         val list = if (cur.any { it.id == item.id }) cur.filterNot { it.id == item.id } else cur + item
         _favorites.value = list
-        writeFavorites(list)
+        writeItems("favorites.json", list)
+    }
+
+    // ---- histórico (só YouTube) ----
+    fun addHistory(item: Item) = synchronized(lock) {
+        if (item.kind != Kind.YOUTUBE) return@synchronized
+        val list = (listOf(item) + _history.value.filterNot { it.id == item.id }).take(MAX_HISTORY)
+        _history.value = list
+        writeItems("history.json", list)
+    }
+
+    fun clearHistory() = synchronized(lock) {
+        _history.value = emptyList()
+        writeItems("history.json", emptyList())
+    }
+
+    // ---- canais seguidos ----
+    fun follow(channel: Channel) = synchronized(lock) {
+        if (_following.value.any { it.url == channel.url }) return@synchronized
+        val list = _following.value + channel
+        _following.value = list
+        writeChannels(list)
+    }
+
+    fun followAll(channels: List<Channel>) = synchronized(lock) {
+        val known = _following.value.map { it.url }.toSet()
+        val list = _following.value + channels.filter { it.url !in known }.distinctBy { it.url }
+        _following.value = list
+        writeChannels(list)
+    }
+
+    fun unfollow(url: String) = synchronized(lock) {
+        val list = _following.value.filterNot { it.url == url }
+        _following.value = list
+        writeChannels(list)
     }
 
     // ---- JSON ----
     private fun itemToJson(i: Item) = JSONObject()
         .put("id", i.id).put("t", i.title).put("u", i.url)
         .put("g", i.group ?: JSONObject.NULL).put("k", i.kind.name)
+        .put("th", i.thumb ?: JSONObject.NULL)
+        .put("lv", i.isLive).put("d", i.durationSec)
+        .put("cu", i.channelUrl ?: JSONObject.NULL)
+
+    private fun JSONObject.strOrNull(key: String): String? = if (isNull(key) || !has(key)) null else getString(key)
 
     private fun itemFromJson(o: JSONObject) = Item(
         id = o.getString("id"),
         title = o.getString("t"),
         url = o.getString("u"),
-        group = if (o.isNull("g")) null else o.getString("g"),
-        kind = runCatching { Kind.valueOf(o.getString("k")) }.getOrDefault(Kind.STREAM)
+        group = o.strOrNull("g"),
+        kind = runCatching { Kind.valueOf(o.getString("k")) }.getOrDefault(Kind.STREAM),
+        thumb = o.strOrNull("th"),
+        isLive = o.optBoolean("lv", false),
+        durationSec = o.optLong("d", 0),
+        channelUrl = o.strOrNull("cu")
     )
 
-    private fun writeFavorites(list: List<Item>) {
+    private fun writeItems(name: String, list: List<Item>) {
         val arr = JSONArray(); list.forEach { arr.put(itemToJson(it)) }
-        atomicWrite(File(dir, "favorites.json"), arr.toString())
+        atomicWrite(File(dir, name), arr.toString())
     }
 
-    private fun readFavorites(): List<Item> {
-        val f = File(dir, "favorites.json"); if (!f.exists()) return emptyList()
+    private fun readItems(name: String): List<Item> {
+        val f = File(dir, name); if (!f.exists()) return emptyList()
         val arr = JSONArray(f.readText())
         return List(arr.length()) { itemFromJson(arr.getJSONObject(it)) }
+    }
+
+    private fun writeChannels(list: List<Channel>) {
+        val arr = JSONArray()
+        list.forEach { arr.put(JSONObject().put("u", it.url).put("n", it.name)) }
+        atomicWrite(File(dir, "following.json"), arr.toString())
+    }
+
+    private fun readChannels(): List<Channel> {
+        val f = File(dir, "following.json"); if (!f.exists()) return emptyList()
+        val arr = JSONArray(f.readText())
+        return List(arr.length()) { val o = arr.getJSONObject(it); Channel(o.getString("u"), o.getString("n")) }
     }
 
     private fun writePlaylists(list: List<Playlist>) {

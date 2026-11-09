@@ -11,8 +11,19 @@ android {
         applicationId = "com.autotv.player"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
+    }
+
+    // Chave de debug fixa no repositório: assim cada build novo instala POR CIMA do anterior
+    // (sem perder favoritos/listas). É só uma chave de testes, não use para publicar na Play Store.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
@@ -69,6 +80,8 @@ dependencies {
     implementation("androidx.media3:media3-ui:$media3")
 
     implementation("androidx.car.app:app:1.4.0")
+
+    implementation("io.coil-kt:coil-compose:2.6.0")
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 

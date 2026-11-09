@@ -1,36 +1,42 @@
 package com.autotv.player.ui
 
+import android.app.Activity
+import android.content.pm.ActivityInfo
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.background
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -42,6 +48,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
@@ -58,13 +65,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.media3.common.util.UnstableApi
-import androidx.media3.ui.PlayerView
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.autotv.player.data.Item
 import com.autotv.player.data.Playlist
+import com.autotv.player.data.Prefs
 import com.autotv.player.player.PlayerHub
 
 @Composable
@@ -75,6 +85,7 @@ fun AutoTvTheme(content: @Composable () -> Unit) {
 @Composable
 fun AppRoot(vm: MainViewModel) {
     var tab by rememberSaveable { mutableIntStateOf(0) }
+    var fullscreen by rememberSaveable { mutableStateOf(false) }
     val now by PlayerHub.nowPlaying.collectAsState()
     val busy by vm.busy.collectAsState()
     val message by vm.message.collectAsState()
@@ -83,73 +94,179 @@ fun AppRoot(vm: MainViewModel) {
     LaunchedEffect(message) {
         message?.let { snackbar.showSnackbar(it); vm.clearMessage() }
     }
+    LaunchedEffect(now) { if (now == null) fullscreen = false }
+    FullscreenEffect(fullscreen && now != null)
+
+    val current = now
+    if (fullscreen && current != null) {
+        BackHandler { fullscreen = false }
+        PlayerSurface(current, true, { fullscreen = false }, Modifier.fillMaxSize())
+        return
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(selected = tab == 0, onClick = { tab = 0 },
-                    icon = { Icon(Icons.Default.Menu, null) }, label = { Text("Listas") })
+                    icon = { Icon(Icons.Default.Home, null) }, label = { Text("Início") })
                 NavigationBarItem(selected = tab == 1, onClick = { tab = 1 },
-                    icon = { Icon(Icons.Default.PlayArrow, null) }, label = { Text("YouTube") })
+                    icon = { Icon(Icons.Default.Person, null) }, label = { Text("Seguindo") })
                 NavigationBarItem(selected = tab == 2, onClick = { tab = 2 },
-                    icon = { Icon(Icons.Default.Favorite, null) }, label = { Text("Favoritos") })
+                    icon = { Icon(Icons.Default.Menu, null) }, label = { Text("TV") })
+                NavigationBarItem(selected = tab == 3, onClick = { tab = 3 },
+                    icon = { Icon(Icons.Default.Favorite, null) }, label = { Text("Biblioteca") })
             }
         }
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
-            if (now != null) PlayerPanel(vm, now!!)
+            if (current != null) PlayerPanel(vm, current) { fullscreen = true }
             if (busy) CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally).padding(8.dp))
             when (tab) {
-                0 -> PlaylistsTab(vm)
-                1 -> YouTubeTab(vm)
-                else -> FavoritesTab(vm)
+                0 -> HomeTab(vm)
+                1 -> FollowingTab(vm)
+                2 -> PlaylistsTab(vm)
+                else -> LibraryTab(vm)
             }
         }
     }
 }
 
-@OptIn(UnstableApi::class)
+/** Tela cheia: paisagem + esconde as barras do sistema. */
 @Composable
-fun PlayerPanel(vm: MainViewModel, item: Item) {
-    val carActive by PlayerHub.carActive.collectAsState()
-    val status by PlayerHub.status.collectAsState()
-    val favs by vm.favorites.collectAsState()
-    val isFav = favs.any { it.id == item.id }
-
-    Column(Modifier.fillMaxWidth().background(Color.Black)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f), contentAlignment = Alignment.Center) {
-            if (carActive) {
-                Text("Reproduzindo na tela do carro", color = Color.White)
-            } else {
-                AndroidView(
-                    modifier = Modifier.fillMaxSize(),
-                    factory = { ctx ->
-                        PlayerView(ctx).apply {
-                            player = PlayerHub.player
-                            useController = true
-                        }
-                    },
-                    onRelease = { it.player = null }
-                )
-            }
-        }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(item.title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.titleSmall)
-                status?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary) }
-            }
-            TextButton(onClick = { PlayerHub.previous() }) { Text("⏮") }
-            TextButton(onClick = { PlayerHub.next() }) { Text("⏭") }
-            IconButton(onClick = { vm.toggleFavorite(item) }) {
-                Icon(if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "Favorito")
-            }
-            TextButton(onClick = { PlayerHub.stop() }) { Text("✕") }
+private fun FullscreenEffect(enabled: Boolean) {
+    val view = LocalView.current
+    val activity = LocalContext.current as? Activity
+    LaunchedEffect(enabled) {
+        activity ?: return@LaunchedEffect
+        activity.requestedOrientation =
+            if (enabled) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        val controller = WindowCompat.getInsetsController(activity.window, view)
+        if (enabled) {
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller.show(WindowInsetsCompat.Type.systemBars())
         }
     }
 }
 
-// ---------------------------------------------------------------- Listas
+// ---------------------------------------------------------------- Início (YouTube)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HomeTab(vm: MainViewModel) {
+    var query by rememberSaveable { mutableStateOf("") }
+    val results by vm.ytResults.collectAsState()
+    val resultsFor by vm.resultsFor.collectAsState()
+    val section by vm.homeSection.collectAsState()
+    val feed by vm.feed.collectAsState()
+    val history by vm.history.collectAsState()
+
+    LaunchedEffect(Unit) { vm.selectHome(section) }
+
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = query, onValueChange = { query = it }, singleLine = true,
+                placeholder = { Text("Buscar no YouTube ou colar link") },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { vm.submitYoutube(query) }),
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(onClick = { vm.submitYoutube(query) }) { Icon(Icons.Default.Search, "Buscar") }
+        }
+
+        if (resultsFor != null) {
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Resultados para \"$resultsFor\"", Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleSmall)
+                TextButton(onClick = { vm.clearResults() }) { Text("Limpar") }
+            }
+            MediaList(vm, results)
+        } else {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                HomeSection.values().forEach { s ->
+                    FilterChip(
+                        selected = section == s,
+                        onClick = { vm.selectHome(s, force = section == s) },
+                        label = { Text(s.label) }
+                    )
+                }
+            }
+            val items: List<Item> = when (section) {
+                HomeSection.HISTORY -> history
+                else -> feed?.takeIf { it.first == section }?.second.orEmpty()
+            }
+            if (section == HomeSection.HISTORY && history.isNotEmpty()) {
+                MediaList(vm, items, header = {
+                    TextButton(onClick = { vm.clearHistory() }) { Text("Limpar histórico") }
+                })
+            } else {
+                if (items.isEmpty()) {
+                    Text(
+                        if (section == HomeSection.HISTORY) "Nada assistido ainda." else "Carregando… toque na aba de novo para atualizar.",
+                        Modifier.padding(16.dp), color = MaterialTheme.colorScheme.outline
+                    )
+                }
+                MediaList(vm, items)
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------- Seguindo (substitui o login)
+
+@Composable
+fun FollowingTab(vm: MainViewModel) {
+    val channels by vm.following.collectAsState()
+    val feed by vm.followingFeed.collectAsState()
+    var manage by rememberSaveable { mutableStateOf(false) }
+    val ctx = LocalContext.current
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri != null) vm.importSubscriptions(ctx.contentResolver, uri)
+    }
+
+    LaunchedEffect(channels) { vm.loadFollowingFeed() }
+
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = { picker.launch(arrayOf("*/*")) }) { Text("Importar inscrições (.csv)") }
+            Spacer(Modifier.weight(1f))
+            if (channels.isNotEmpty()) {
+                IconButton(onClick = { vm.loadFollowingFeed(force = true) }) { Icon(Icons.Default.Refresh, "Atualizar") }
+                TextButton(onClick = { manage = !manage }) { Text(if (manage) "Concluir" else "Gerenciar") }
+            }
+        }
+        if (channels.isEmpty()) {
+            Text(
+                "Você ainda não segue nenhum canal.\n\n" +
+                    "Abra um vídeo e toque em Seguir, ou importe suas inscrições: " +
+                    "em takeout.google.com exporte \"YouTube\" > \"inscrições\" e escolha o arquivo subscriptions.csv aqui.",
+                Modifier.padding(16.dp), color = MaterialTheme.colorScheme.outline
+            )
+        } else if (manage) {
+            LazyColumn(Modifier.fillMaxSize()) {
+                itemsIndexed(channels, key = { _, c -> c.url }) { _, c ->
+                    Row(Modifier.fillMaxWidth().padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(c.name, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        IconButton(onClick = { vm.unfollow(c.url) }) { Icon(Icons.Default.Delete, "Deixar de seguir") }
+                    }
+                }
+            }
+        } else {
+            if (feed.isEmpty()) {
+                Text("Carregando novidades…", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.outline)
+            }
+            MediaList(vm, feed)
+        }
+    }
+}
+
+// ---------------------------------------------------------------- TV (listas M3U)
 
 @Composable
 fun PlaylistsTab(vm: MainViewModel) {
@@ -189,8 +306,6 @@ fun PlaylistsTab(vm: MainViewModel) {
 @Composable
 fun PlaylistDetail(vm: MainViewModel, playlist: Playlist, onBack: () -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
-    val favs by vm.favorites.collectAsState()
-    val favIds = remember(favs) { favs.map { it.id }.toSet() }
     val filtered = remember(playlist, query) {
         if (query.isBlank()) playlist.items
         else playlist.items.filter {
@@ -211,7 +326,7 @@ fun PlaylistDetail(vm: MainViewModel, playlist: Playlist, onBack: () -> Unit) {
             label = { Text("Buscar canal ou categoria") },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
         )
-        ItemList(vm, filtered, favIds)
+        MediaList(vm, filtered)
     }
 }
 
@@ -246,70 +361,26 @@ fun AddPlaylistDialog(vm: MainViewModel, onDismiss: () -> Unit) {
     )
 }
 
-// ---------------------------------------------------------------- YouTube
+// ---------------------------------------------------------------- Biblioteca (favoritos)
 
 @Composable
-fun YouTubeTab(vm: MainViewModel) {
-    var input by rememberSaveable { mutableStateOf("") }
-    val results by vm.ytResults.collectAsState()
+fun LibraryTab(vm: MainViewModel) {
     val favs by vm.favorites.collectAsState()
-    val favIds = remember(favs) { favs.map { it.id }.toSet() }
-
+    var carAdvanced by remember { mutableStateOf(Prefs.carAdvancedUi) }
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
-                value = input, onValueChange = { input = it }, singleLine = true,
-                label = { Text("Buscar ou colar link do YouTube") },
-                modifier = Modifier.weight(1f)
-            )
-            Spacer(Modifier.width(8.dp))
-            Button(onClick = { vm.submitYoutube(input) }) { Text("Ir") }
-        }
-        Text(
-            "Dica: compartilhe um vídeo do app do YouTube para o AutoTV. Link de playlist vira uma lista salva.",
-            Modifier.padding(horizontal = 12.dp), style = MaterialTheme.typography.bodySmall
-        )
-        Spacer(Modifier.height(8.dp))
-        ItemList(vm, results, favIds)
-    }
-}
-
-// ---------------------------------------------------------------- Favoritos
-
-@Composable
-fun FavoritesTab(vm: MainViewModel) {
-    val favs by vm.favorites.collectAsState()
-    val favIds = remember(favs) { favs.map { it.id }.toSet() }
-    if (favs.isEmpty()) {
-        Text("Nenhum favorito ainda. Toque no coração de um canal ou vídeo.", Modifier.padding(24.dp))
-    }
-    ItemList(vm, favs, favIds)
-}
-
-// ---------------------------------------------------------------- Lista de itens
-
-@Composable
-fun ItemList(vm: MainViewModel, items: List<Item>, favIds: Set<String>) {
-    LazyColumn(Modifier.fillMaxSize()) {
-        itemsIndexed(items, key = { i, it -> "${it.id}#$i" }) { index, item ->
-            Row(
-                Modifier.fillMaxWidth().clickable { vm.play(items, index) }.padding(start = 16.dp, top = 4.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text(item.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    item.group?.let {
-                        Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-                    }
-                }
-                IconButton(onClick = { vm.toggleFavorite(item) }) {
-                    Icon(
-                        if (item.id in favIds) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        "Favorito"
-                    )
-                }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("Interface avançada no carro")
+                Text(
+                    "Botões, barra de progresso, brilho e legendas. Se a tela do carro ficar preta, desligue (vale no próximo vídeo).",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline
+                )
             }
+            Switch(checked = carAdvanced, onCheckedChange = { carAdvanced = it; Prefs.carAdvancedUi = it })
         }
+        if (favs.isEmpty()) {
+            Text("Nenhum favorito ainda. Toque no coração de um canal ou vídeo.", Modifier.padding(24.dp))
+        }
+        MediaList(vm, favs)
     }
 }

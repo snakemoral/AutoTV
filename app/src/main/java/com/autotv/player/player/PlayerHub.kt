@@ -3,11 +3,14 @@
 package com.autotv.player.player
 
 import android.content.Context
+import android.net.Uri
 import android.view.Surface
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
@@ -17,11 +20,14 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.MergingMediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
+import androidx.media3.exoplayer.source.SingleSampleMediaSource
 import com.autotv.player.data.Http
 import com.autotv.player.data.Item
 import com.autotv.player.data.Kind
-import com.autotv.player.data.ResolvedMedia
+import com.autotv.player.data.Prefs
+import com.autotv.player.data.Store
 import com.autotv.player.data.YouTube
+import com.autotv.player.data.YtMedia
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -30,11 +36,18 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import java.util.Locale
+
+/** Uma opção de qualidade, áudio ou legenda para mostrar nos menus. */
+data class Option(val id: String, val label: String, val selected: Boolean)
 
 /**
  * Um único player para o celular e para o carro.
  * Tudo aqui deve ser chamado na thread principal.
+ *
+ * Dois modos de escolher qualidade/áudio/legenda:
+ *  - modo "stream": vídeo do YouTube com streams separados (trocamos a fonte mantendo a posição);
+ *  - modo "trilhas": lives (HLS) e canais M3U (usamos as trilhas do próprio ExoPlayer).
  */
 object PlayerHub {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -51,10 +64,22 @@ object PlayerHub {
     val isPlaying = MutableStateFlow(false)
     /** true enquanto o vídeo está sendo desenhado na tela do carro. */
     val carActive = MutableStateFlow(false)
+    val isLive = MutableStateFlow(false)
+
+    val qualityOptions = MutableStateFlow<List<Option>>(emptyList())
+    val audioOptions = MutableStateFlow<List<Option>>(emptyList())
+    val subtitleOptions = MutableStateFlow<List<Option>>(emptyList())
 
     private var queue: List<Item> = emptyList()
     private var index = -1
     private var carSurface: Surface? = null
+
+    private var yt: YtMedia? = null
+    private var selVideo = -1
+    private var selAudio = 0
+    private var selSub = -1
+
+    private fun streamMode() = yt?.let { it.hls == null } ?: false
 
     fun init(context: Context) {
         val app = context.applicationContext
@@ -87,19 +112,32 @@ object PlayerHub {
                 when (state) {
                     Player.STATE_BUFFERING -> status.value = "Carregando…"
                     Player.STATE_READY -> { status.value = null; retries = 0 }
-                    Player.STATE_ENDED -> if (nowPlaying.value?.kind == Kind.YOUTUBE) next()
+                    Player.STATE_ENDED -> if (nowPlaying.value?.kind == Kind.YOUTUBE && !isLive.value) next()
                     else -> Unit
                 }
             }
 
+            override fun onTracksChanged(tracks: Tracks) { publishTrackOptions() }
+
+            override fun onTrackSelectionParametersChanged(parameters: androidx.media3.common.TrackSelectionParameters) {
+                publishTrackOptions()
+            }
+
             override fun onPlayerError(error: PlaybackException) {
                 val item = nowPlaying.value
-                if (item?.kind == Kind.STREAM && retries < 3) {
-                    retries++
-                    status.value = "Reconectando ($retries/3)…"
-                    scope.launch { delay(2_000); player.prepare() }
-                } else {
-                    status.value = "Erro: ${error.errorCodeName}"
+                when {
+                    item?.kind == Kind.STREAM && retries < 3 -> {
+                        retries++
+                        status.value = "Reconectando ($retries/3)…"
+                        scope.launch { delay(2_000); player.prepare() }
+                    }
+                    item?.kind == Kind.YOUTUBE && retries < 2 -> {
+                        // O link do stream pode ter expirado: resolve de novo e continua de onde parou.
+                        retries++
+                        status.value = "Reconectando ($retries/2)…"
+                        resumeYoutube(item, player.currentPosition)
+                    }
+                    else -> status.value = "Erro: ${error.errorCodeName}"
                 }
             }
         })
@@ -126,9 +164,27 @@ object PlayerHub {
         player.stop()
         nowPlaying.value = null
         status.value = null
+        yt = null
+        clearOptions()
+    }
+
+    // ---- posição ----
+    fun positionMs(): Long = player.currentPosition
+    fun durationMs(): Long = player.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: -1L
+    fun bufferedMs(): Long = player.bufferedPosition
+    fun liveNow(): Boolean = isLive.value || player.isCurrentMediaItemLive
+    fun seekTo(ms: Long) { player.seekTo(ms.coerceAtLeast(0)) }
+    fun seekBy(deltaMs: Long) {
+        val d = durationMs()
+        var t = player.currentPosition + deltaMs
+        t = if (d > 0) t.coerceIn(0, d) else t.coerceAtLeast(0)
+        player.seekTo(t)
     }
 
     // ---- tela do carro ----
+    fun setCarActive(active: Boolean) { carActive.value = active }
+
+    /** Modo simples: o vídeo é desenhado direto na superfície do carro. */
     fun attachCarSurface(surface: Surface) {
         carSurface = surface
         player.setVideoSurface(surface)
@@ -141,25 +197,159 @@ object PlayerHub {
         carActive.value = false
     }
 
+    // ---- escolhas de qualidade / áudio / legenda ----
+    fun selectQuality(id: String) {
+        if (streamMode()) {
+            val m = yt ?: return
+            val i = id.removePrefix("v:").toIntOrNull() ?: return
+            if (i < 0 || i == selVideo || i !in m.videos.indices) return
+            selVideo = i
+            Prefs.preferredHeight = m.videos[i].height
+            applyYt(keepPosition = true)
+        } else {
+            val params = player.trackSelectionParameters.buildUpon().clearOverridesOfType(C.TRACK_TYPE_VIDEO)
+            if (id != "auto") {
+                val h = id.removePrefix("h:").toIntOrNull()
+                outer@ for (g in player.currentTracks.groups) {
+                    if (g.type != C.TRACK_TYPE_VIDEO) continue
+                    for (i in 0 until g.length) {
+                        if (g.getTrackFormat(i).height == h) {
+                            params.setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, i))
+                            break@outer
+                        }
+                    }
+                }
+            }
+            player.trackSelectionParameters = params.build()
+        }
+    }
+
+    fun selectAudio(id: String) {
+        if (streamMode()) {
+            val m = yt ?: return
+            val i = id.removePrefix("a:").toIntOrNull() ?: return
+            if (i == selAudio || i !in m.audios.indices) return
+            selAudio = i
+            applyYt(keepPosition = true)
+        } else {
+            val parts = id.split(":")
+            val g = parts.getOrNull(1)?.toIntOrNull() ?: return
+            val t = parts.getOrNull(2)?.toIntOrNull() ?: return
+            val group = player.currentTracks.groups.getOrNull(g) ?: return
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, t))
+                .build()
+        }
+    }
+
+    fun selectSubtitle(id: String) {
+        if (streamMode()) {
+            val m = yt ?: return
+            if (id == "off") {
+                if (selSub == -1) return
+                selSub = -1
+                Prefs.subtitleLang = ""
+            } else {
+                val i = id.removePrefix("s:").toIntOrNull() ?: return
+                if (i == selSub || i !in m.subs.indices) return
+                selSub = i
+                Prefs.subtitleLang = m.subs[i].lang
+            }
+            applyYt(keepPosition = true)
+        } else {
+            val builder = player.trackSelectionParameters.buildUpon()
+            if (id == "off") {
+                builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+            } else {
+                val parts = id.split(":")
+                val g = parts.getOrNull(1)?.toIntOrNull() ?: return
+                val t = parts.getOrNull(2)?.toIntOrNull() ?: return
+                val group = player.currentTracks.groups.getOrNull(g) ?: return
+                builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, t))
+            }
+            player.trackSelectionParameters = builder.build()
+        }
+    }
+
     // ---- interno ----
+    private fun clearOptions() {
+        qualityOptions.value = emptyList()
+        audioOptions.value = emptyList()
+        subtitleOptions.value = emptyList()
+    }
+
+    private fun setTextDisabled(disabled: Boolean) {
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, disabled)
+            .build()
+    }
+
     private fun start() {
         val item = queue.getOrNull(index) ?: return
         job?.cancel()
         retries = 0
         nowPlaying.value = item
+        if (item.kind == Kind.YOUTUBE) Store.addHistory(item)
         status.value = "Carregando…"
+        yt = null
+        isLive.value = false
+        clearOptions()
+        // Limpa escolhas de trilhas do vídeo anterior; legendas começam desligadas nas trilhas HLS/M3U.
+        player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+            .clearOverrides()
+            .setMaxVideoSize(Int.MAX_VALUE, Int.MAX_VALUE)
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+            .build()
         job = scope.launch {
             try {
-                val source: MediaSource = when (item.kind) {
-                    Kind.STREAM ->
-                        DefaultMediaSourceFactory(iptvFactory).createMediaSource(MediaItem.fromUri(item.url))
+                when (item.kind) {
+                    Kind.STREAM -> {
+                        player.setMediaSource(
+                            DefaultMediaSourceFactory(iptvFactory).createMediaSource(MediaItem.fromUri(item.url))
+                        )
+                        player.prepare()
+                        player.playWhenReady = true
+                    }
                     Kind.YOUTUBE -> {
-                        val resolved = withContext(Dispatchers.IO) { YouTube.resolve(item.url) }
-                        buildYoutubeSource(resolved)
+                        val m = YouTube.resolveAsync(item.url)
+                        setupYoutube(m)
+                        applyYt(keepPosition = false)
+                        player.playWhenReady = true
                     }
                 }
-                player.setMediaSource(source)
-                player.prepare()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                status.value = "Erro: ${e.message ?: e.javaClass.simpleName}"
+            }
+        }
+    }
+
+    private fun setupYoutube(m: YtMedia) {
+        yt = m
+        isLive.value = m.isLive
+        selVideo = YouTube.defaultVideoIndex(m.videos, Prefs.preferredHeight)
+        selAudio = 0
+        val lang = Prefs.subtitleLang
+        selSub = if (lang.isBlank()) -1 else {
+            val manual = m.subs.indexOfFirst { it.lang == lang && !it.auto }
+            if (manual >= 0) manual else m.subs.indexOfFirst { it.lang == lang }
+        }
+    }
+
+    private fun resumeYoutube(item: Item, positionMs: Long) {
+        job?.cancel()
+        job = scope.launch {
+            try {
+                val m = YouTube.resolveAsync(item.url)
+                val oldVideoHeight = yt?.videos?.getOrNull(selVideo)?.height
+                setupYoutube(m)
+                if (oldVideoHeight != null) {
+                    val i = m.videos.indexOfFirst { it.height == oldVideoHeight }
+                    if (i >= 0) selVideo = i
+                }
+                applyYt(keepPosition = false, startMs = if (m.isLive) 0L else positionMs)
                 player.playWhenReady = true
             } catch (e: CancellationException) {
                 throw e
@@ -169,13 +359,106 @@ object PlayerHub {
         }
     }
 
-    private fun buildYoutubeSource(r: ResolvedMedia): MediaSource {
-        if (r.isHls) {
-            return HlsMediaSource.Factory(webFactory).createMediaSource(MediaItem.fromUri(r.video))
+    private fun applyYt(keepPosition: Boolean, startMs: Long = 0L) {
+        val m = yt ?: return
+        val pos = if (keepPosition) player.currentPosition else startMs
+        val wasPlaying = if (keepPosition) player.playWhenReady else true
+
+        val source: MediaSource
+        if (m.hls != null) {
+            source = HlsMediaSource.Factory(webFactory).createMediaSource(MediaItem.fromUri(m.hls))
+        } else {
+            val pf = ProgressiveMediaSource.Factory(webFactory)
+            val sources = ArrayList<MediaSource>()
+            val v = m.videos.getOrNull(selVideo)
+            if (v != null) {
+                sources += pf.createMediaSource(MediaItem.fromUri(v.url))
+                m.audios.getOrNull(selAudio)?.let { sources += pf.createMediaSource(MediaItem.fromUri(it.url)) }
+            } else {
+                sources += pf.createMediaSource(MediaItem.fromUri(m.muxed ?: error("sem stream")))
+            }
+            m.subs.getOrNull(selSub)?.let { s ->
+                val cfg = MediaItem.SubtitleConfiguration.Builder(Uri.parse(s.url))
+                    .setMimeType(s.mime)
+                    .setLanguage(s.lang)
+                    .setSelectionFlags(C.SELECTION_FLAG_DEFAULT)
+                    .build()
+                sources += SingleSampleMediaSource.Factory(webFactory).createMediaSource(cfg, C.TIME_UNSET)
+            }
+            source = if (sources.size == 1) sources[0] else MergingMediaSource(*sources.toTypedArray())
         }
-        val factory = ProgressiveMediaSource.Factory(webFactory)
-        val video = factory.createMediaSource(MediaItem.fromUri(r.video))
-        val audioUrl = r.audio ?: return video
-        return MergingMediaSource(video, factory.createMediaSource(MediaItem.fromUri(audioUrl)))
+        if (m.hls == null) setTextDisabled(selSub < 0)
+        player.setMediaSource(source, pos)
+        player.prepare()
+        player.playWhenReady = wasPlaying
+        publishStreamOptions()
+    }
+
+    private fun publishStreamOptions() {
+        val m = yt ?: return
+        qualityOptions.value =
+            if (m.videos.isEmpty()) listOf(Option("v:-1", "Padrão", true))
+            else m.videos.mapIndexed { i, v -> Option("v:$i", v.label, i == selVideo) }
+        audioOptions.value = m.audios.mapIndexed { i, a -> Option("a:$i", a.label, i == selAudio) }
+        subtitleOptions.value =
+            listOf(Option("off", "Desativadas", selSub < 0)) +
+                m.subs.mapIndexed { i, s -> Option("s:$i", s.label, i == selSub) }
+    }
+
+    /** Opções a partir das trilhas do ExoPlayer (lives HLS e canais M3U). */
+    private fun publishTrackOptions() {
+        if (streamMode()) return
+        val groups = player.currentTracks.groups
+        val params = player.trackSelectionParameters
+        val ptBr = Locale("pt", "BR")
+
+        // Qualidade
+        var hasVideoOverride = false
+        var selectedHeight = -1
+        val heights = sortedSetOf<Int>()
+        for (g in groups) {
+            if (g.type != C.TRACK_TYPE_VIDEO) continue
+            if (params.overrides.containsKey(g.mediaTrackGroup)) hasVideoOverride = true
+            for (i in 0 until g.length) {
+                val h = g.getTrackFormat(i).height
+                if (h > 0) heights += h
+                if (g.isTrackSelected(i) && h > 0) selectedHeight = h
+            }
+        }
+        qualityOptions.value =
+            if (heights.isEmpty()) emptyList()
+            else listOf(Option("auto", "Automático", !hasVideoOverride)) +
+                heights.reversed().map { Option("h:$it", "${it}p", hasVideoOverride && it == selectedHeight) }
+
+        // Áudio
+        val audio = ArrayList<Option>()
+        for ((gi, g) in groups.withIndex()) {
+            if (g.type != C.TRACK_TYPE_AUDIO) continue
+            for (i in 0 until g.length) {
+                val f = g.getTrackFormat(i)
+                val label = f.label?.takeIf { it.isNotBlank() }
+                    ?: f.language?.takeIf { it != "und" }?.let { Locale.forLanguageTag(it).getDisplayLanguage(ptBr) }
+                        ?.replaceFirstChar { it.uppercase() }
+                    ?: "Faixa ${audio.size + 1}"
+                audio += Option("a:$gi:$i", label, g.isTrackSelected(i))
+            }
+        }
+        audioOptions.value = if (audio.size > 1) audio else emptyList()
+
+        // Legendas
+        val textDisabled = params.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
+        val subs = ArrayList<Option>()
+        for ((gi, g) in groups.withIndex()) {
+            if (g.type != C.TRACK_TYPE_TEXT) continue
+            for (i in 0 until g.length) {
+                val f = g.getTrackFormat(i)
+                val label = f.label?.takeIf { it.isNotBlank() }
+                    ?: f.language?.takeIf { it != "und" }?.let { Locale.forLanguageTag(it).getDisplayLanguage(ptBr) }
+                        ?.replaceFirstChar { it.uppercase() }
+                    ?: "Legenda ${subs.size + 1}"
+                subs += Option("t:$gi:$i", label, !textDisabled && g.isTrackSelected(i))
+            }
+        }
+        subtitleOptions.value = if (subs.isEmpty()) emptyList() else listOf(Option("off", "Desativadas", textDisabled)) + subs
     }
 }

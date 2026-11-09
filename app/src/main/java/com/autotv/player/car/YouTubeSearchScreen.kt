@@ -15,10 +15,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** Busca no YouTube com resultados em lista, com miniatura, título, canal e duração / "AO VIVO". */
 class YouTubeSearchScreen(ctx: CarContext) : Screen(ctx) {
     private var results: List<Item> = emptyList()
     private var loading = false
     private var error: String? = null
+    private val thumbs = ThumbHelper(this)
 
     private val callback = object : SearchTemplate.SearchCallback {
         override fun onSearchTextChanged(searchText: String) {}
@@ -53,12 +55,12 @@ class YouTubeSearchScreen(ctx: CarContext) : Screen(ctx) {
             val list = ItemList.Builder()
             if (results.isEmpty()) list.setNoItemsMessage(error ?: "Digite e confirme para buscar")
             results.take(limit).forEachIndexed { i, item ->
-                list.addItem(
-                    Row.Builder().setTitle(item.title)
-                        .apply { item.group?.let { addText(it) } }
-                        .setOnClickListener { playAndOpen(results, i) }
-                        .build()
-                )
+                val row = Row.Builder()
+                    .setTitle(item.title)
+                    .setImage(thumbs.icon(item.thumb), Row.IMAGE_TYPE_LARGE)
+                    .setOnClickListener { playAndOpen(results, i) }
+                itemSubtitle(item)?.let { row.addText(it) }
+                list.addItem(row.build())
             }
             builder.setItemList(list.build())
         }
