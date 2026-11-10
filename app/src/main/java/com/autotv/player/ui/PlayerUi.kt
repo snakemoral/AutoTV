@@ -107,6 +107,24 @@ fun PlayerSurface(
             }
         }
 
+        // Ao vivo: indicador no canto; se você voltou no tempo, vira o botão para retornar ao vivo.
+        var liveState by remember { androidx.compose.runtime.mutableIntStateOf(0) } // 0 = não é ao vivo, 1 = ao vivo, 2 = atrasado
+        androidx.compose.runtime.LaunchedEffect(item.id) {
+            while (true) {
+                liveState = if (!PlayerHub.liveNow()) 0 else if (PlayerHub.behindLive()) 2 else 1
+                kotlinx.coroutines.delay(1000)
+            }
+        }
+        if (liveState != 0 && controlsVisible && !carActive) {
+            Text(
+                if (liveState == 2) "▶▶ Voltar ao vivo" else "● AO VIVO",
+                color = if (liveState == 2) Color.White else Color(0xFFFF2D55),
+                modifier = Modifier.align(Alignment.BottomStart).padding(start = 12.dp, bottom = 64.dp)
+                    .clip(RoundedCornerShape(14.dp)).background(Color(0xAA000000))
+                    .clickable { PlayerHub.seekToLive() }
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            )
+        }
         if (loading) {
             androidx.compose.material3.CircularProgressIndicator(
                 color = Color.White,

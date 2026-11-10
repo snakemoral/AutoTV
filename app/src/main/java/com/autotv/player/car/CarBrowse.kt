@@ -140,8 +140,72 @@ class CarBrowsePresentation(
     private val onSearch: () -> Unit,
     private val onCategories: () -> Unit,
     private val onNowPlaying: () -> Unit,
-    private val onPick: (List<Item>, Int) -> Unit
+    private val onPick: (List<Item>, Int) -> Unit,
+    /** Modo "tela inicial": no lugar da barra de título, mostra as abas e os filtros ([setChips]). */
+    private val hub: Boolean = false,
+    private val onTab: (String) -> Unit = {},
+    private val onFilter: (String) -> Unit = {},
+    private val initialScroll: Int = 0,
+    private val onScrollSaved: (Int) -> Unit = {}
 ) : Presentation(ctx, display), SurfaceUi {
+
+    /** Um botão de aba ou de filtro. */
+    class Chip(val id: String, val label: String, val selected: Boolean = false)
+
+    private var tabs: List<Chip> = emptyList()
+    private var filters: List<Chip> = emptyList()
+    private var chipBox: LinearLayout? = null
+    private var filterBox: LinearLayout? = null
+    private var restoreScroll = initialScroll
+
+    fun setChips(tabs: List<Chip>, filters: List<Chip>) {
+        this.tabs = tabs
+        this.filters = filters
+        renderChips()
+    }
+
+    private fun chipView(c: Chip, onClick: (String) -> Unit) = TextView(context).apply {
+        text = c.label
+        setTextColor(if (c.selected) Color.BLACK else Color.WHITE)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+        gravity = Gravity.CENTER
+        setPadding(dp(14), dp(8), dp(14), dp(8))
+        background = rounded(if (c.selected) Color.WHITE else 0x33FFFFFF, dp(20))
+        setOnClickListener { onClick(c.id) }
+    }
+
+    /** Distribui os botões em linhas, quebrando quando não cabem na largura. */
+    private fun renderChips() {
+        val tabBox = chipBox ?: return
+        val filterBox = filterBox ?: return
+        tabBox.removeAllViews()
+        filterBox.removeAllViews()
+        val full = root.width - content.paddingLeft - content.paddingRight
+        if (full <= 0) return
+        val gap = dp(8)
+        fun flow(box: LinearLayout, width: Int, chips: List<Chip>, onClick: (String) -> Unit) {
+            var row: LinearLayout? = null
+            var used = 0
+            for (c in chips) {
+                val v = chipView(c, onClick)
+                v.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
+                val w = v.measuredWidth
+                val current = row
+                if (current == null || used + gap + w > width) {
+                    val r = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+                    box.addView(r, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
+                    r.addView(v, LinearLayout.LayoutParams(-2, -2))
+                    row = r
+                    used = w
+                } else {
+                    current.addView(v, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = gap })
+                    used += gap + w
+                }
+            }
+        }
+        flow(tabBox, full, tabs, onTab)
+        flow(filterBox, full - filterBox.paddingRight, filters, onFilter)
+    }
 
     private val handler = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -183,6 +247,7 @@ class CarBrowsePresentation(
     override fun open() = show()
 
     override fun release() {
+        if (::scroll.isInitialized) onScrollSaved(scroll.scrollY)
         scope.cancel()
         try { dismiss() } catch (_: Exception) { }
     }
@@ -252,6 +317,11 @@ class CarBrowsePresentation(
         val bar = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            if (hub) visibility = View.GONE
+        }
+        if (hub) {
+            chipBox = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+            content.addView(chipBox, LinearLayout.LayoutParams(-1, -2))
         }
         bar.addView(pill("‹  Voltar") { onBack() })
         bar.addView(TextView(context).apply {
@@ -278,7 +348,15 @@ class CarBrowsePresentation(
             orientation = LinearLayout.VERTICAL
             setPadding(0, 0, dp(64), dp(16))
         }
-        scroll.addView(grid, FrameLayout.LayoutParams(-1, -2))
+        // Os filtros ficam no topo da área que rola, para não tirar espaço fixo da tela.
+        val scrollContent = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        filterBox = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, 0, dp(64), dp(4))
+        }
+        scrollContent.addView(filterBox, LinearLayout.LayoutParams(-1, -2))
+        scrollContent.addView(grid, LinearLayout.LayoutParams(-1, -2))
+        scroll.addView(scrollContent, FrameLayout.LayoutParams(-1, -2))
         body.addView(scroll, FrameLayout.LayoutParams(-1, -1))
 
         message = TextView(context).apply {
@@ -308,6 +386,7 @@ class CarBrowsePresentation(
 
     private fun rebuild() {
         builtFor = -1
+        renderChips()
         render()
     }
 
@@ -318,7 +397,12 @@ class CarBrowsePresentation(
         if (msg != null || items == null) {
             message.text = msg.orEmpty()
             message.visibility = View.VISIBLE
-            scroll.visibility = View.GONE
+            if (hub) {
+                // Na tela inicial os filtros (e o "Atualizar") continuam visíveis mesmo sem lista.
+                grid.removeAllViews()
+                builtFor = -1
+                scroll.visibility = View.VISIBLE
+            } else scroll.visibility = View.GONE
             return
         }
         message.visibility = View.GONE
@@ -344,7 +428,10 @@ class CarBrowsePresentation(
             }
             grid.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(12) })
         }
-        scroll.scrollTo(0, 0)
+        // Ao voltar do player, retoma a lista onde estava.
+        val y = restoreScroll
+        restoreScroll = 0
+        scroll.post { scroll.scrollTo(0, y) }
     }
 
     private fun card(all: List<Item>, index: Int, item: Item, thumbH: Int): View {

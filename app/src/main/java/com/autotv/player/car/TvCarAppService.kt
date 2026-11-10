@@ -26,13 +26,8 @@ class TvCarAppService : CarAppService() {
         override fun onCreateScreen(intent: Intent): Screen {
             // A superfície do carro é registrada uma vez por conexão; as telas se revezam nela.
             CarSurface.init(carContext)
-            val home = HomeScreen(carContext)
-            // Abre direto em "Seguindo" quando há conta conectada ou canais salvos; "Voltar" leva ao menu.
-            if (Account.signedIn.value || Store.following.value.isNotEmpty()) {
-                carContext.getCarService(ScreenManager::class.java).push(home)
-                return followingScreen(carContext)
-            }
-            return home
+            // Modo avançado: tela inicial com abas, aberta em "Em alta". Modo simples: menu em lista.
+            return if (com.autotv.player.data.Prefs.carAdvancedUi) HubScreen(carContext) else HomeScreen(carContext)
         }
     }
 }

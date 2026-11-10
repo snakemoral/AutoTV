@@ -78,6 +78,19 @@ object YouTube {
         NewPipe.init(NewPipeDownloader(client), Localization("pt", "BR"), ContentCountry("BR"))
     }
 
+    /** Filtros simples para a lista "Seguindo" (o YouTube não informa a categoria desses vídeos). */
+    val FOLLOWING_FILTERS = listOf("all" to "Tudo", "live" to "Ao vivo", "long" to "Longos (+20 min)", "short" to "Curtos")
+
+    fun filterFollowing(items: List<Item>, filter: String): List<Item> = when (filter) {
+        "live" -> items.filter { it.isLive }
+        "long" -> items.filter { !it.isLive && it.durationSec >= 20 * 60 }
+        "short" -> items.filter { !it.isLive && it.durationSec in 1 until 20 * 60 }
+        else -> items
+    }
+
+    /** Os filtros só fazem sentido quando a lista traz duração ou marca de ao vivo. */
+    fun canFilterFollowing(items: List<Item>) = items.any { it.isLive || it.durationSec > 0 }
+
     fun looksLikeLink(text: String): Boolean {
         val t = text.trim().lowercase()
         return (t.startsWith("http://") || t.startsWith("https://")) && (t.contains("youtube.") || t.contains("youtu.be"))
@@ -106,8 +119,8 @@ object YouTube {
     }
 
     /** Carrega uma categoria da home (com cache de 10 min). */
-    fun loadCategory(c: Category): List<Item> {
-        synchronized(cache) {
+    fun loadCategory(c: Category, force: Boolean = false): List<Item> {
+        if (!force) synchronized(cache) {
             cache[c.id]?.let { (t, items) -> if (System.currentTimeMillis() - t < CACHE_MS) return items }
         }
         val items = when {
@@ -124,15 +137,15 @@ object YouTube {
     }
 
     /** Várias categorias em paralelo; categorias que falharem ficam de fora. */
-    suspend fun loadSections(cats: List<Category> = CATEGORIES): List<Pair<Category, List<Item>>> = coroutineScope {
+    suspend fun loadSections(cats: List<Category> = CATEGORIES, force: Boolean = false): List<Pair<Category, List<Item>>> = coroutineScope {
         cats.map { c ->
-            async(Dispatchers.IO) { runCatching { c to loadCategory(c) }.getOrNull() }
+            async(Dispatchers.IO) { runCatching { c to loadCategory(c, force) }.getOrNull() }
         }.awaitAll().filterNotNull().filter { it.second.isNotEmpty() }
     }
 
     /** "Home": mistura os primeiros itens de cada categoria, como um feed. */
-    suspend fun homeFeed(): List<Item> {
-        val sections = loadSections(CATEGORIES.take(4))
+    suspend fun homeFeed(force: Boolean = false): List<Item> {
+        val sections = loadSections(CATEGORIES.take(4), force)
         val out = ArrayList<Item>()
         val seen = HashSet<String>()
         var round = 0

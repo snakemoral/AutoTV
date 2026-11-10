@@ -1,5 +1,5 @@
 # Estado do projeto (para retomar após limite de uso)
-Última atualização: 2026-11-10 (v0.4.2).
+Última atualização: 2026-11-10 (v0.5.0).
 
 - Repositório: github.com/snakemoral/AutoTV, branch main. Cada push compila sozinho (GitHub Actions) e
   publica o APK na Release "latest". Trabalhar no clone em /home/claude/autotv-repo.
@@ -28,9 +28,14 @@
   lista de qualidade mostra também as que o aparelho diz não decodificar (marcadas) e inclui AV1;
   navegador ganhou avançar e favoritos (Prefs.bookmarks) e perdeu os botões próprios de pausar/tela cheia.
   O navegador usa o WebView do sistema (Chromium): codecs, WebGL, Wasm etc. vêm dele, não do app.
+- v0.5.0: carro abre em car/CarHub.kt (HubScreen): abas no topo, "Em alta" primeiro, filtros e "Atualizar"
+  no topo da lista. Ao vivo: barra de progresso permite voltar no trecho disponível e o rótulo "AO VIVO"
+  é o botão de retorno (carro e celular; PlayerHub.liveSeekable/behindLive/seekToLive). Celular: atualizar
+  e categorias em "Em alta", filtros em "Seguindo" (só quando a lista traz duração/ao vivo).
+  O menu em lista antigo (HomeScreen) ficou só para o modo simples.
 - Dúvida em aberto: o usuário não viu qualidades acima de 1080p60 na v0.4.1. Causa não confirmada (ou o
   aparelho não declara suporte, ou o extrator não devolve esses streams). Pedir o nome de um vídeo de teste.
 - Confirmado pelo usuário: tela dividida do Android Auto funciona (AutoTV no painel grande + cartão de música).
-- NÃO testado em aparelho: v0.4.2. O login e a leitura das inscrições da conta dependem de
+- NÃO testado em aparelho: v0.5.0. O login e a leitura das inscrições da conta dependem de
   respostas do YouTube que não foi possível conferir daqui.
 - Regra para quem continuar: LER o código antes de escrever; nunca sobrescrever arquivos inteiros sem ler.

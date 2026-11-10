@@ -54,6 +54,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import com.autotv.player.data.YouTube
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -212,6 +213,22 @@ fun HomeTab(vm: MainViewModel) {
                     )
                 }
             }
+            if (section != HomeSection.HISTORY) {
+                val category by vm.trendingCategory.collectAsState()
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(onClick = { vm.selectHome(section, refresh = true) }) { Icon(Icons.Default.Refresh, "Atualizar") }
+                    if (section == HomeSection.TRENDING) {
+                        FilterChip(selected = category == null, onClick = { vm.selectTrendingCategory(null) }, label = { Text("Tudo") })
+                        YouTube.CATEGORIES.filter { it.id != "live" }.forEach { c ->
+                            FilterChip(selected = category == c.id, onClick = { vm.selectTrendingCategory(c.id) }, label = { Text(c.title) })
+                        }
+                    }
+                }
+            }
             val items: List<Item> = when (section) {
                 HomeSection.HISTORY -> history
                 else -> feed?.takeIf { it.first == section }?.second.orEmpty()
@@ -235,6 +252,7 @@ fun HomeTab(vm: MainViewModel) {
 
 // ---------------------------------------------------------------- Seguindo (substitui o login)
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FollowingTab(vm: MainViewModel) {
     val channels by vm.following.collectAsState()
@@ -291,7 +309,18 @@ fun FollowingTab(vm: MainViewModel) {
                 Text("Carregando novidades…", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.outline)
             }
             feedError?.let { Text("Não deu para carregar: $it", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error) }
-            MediaList(vm, feed)
+            var filter by rememberSaveable { mutableStateOf("all") }
+            if (YouTube.canFilterFollowing(feed)) {
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    YouTube.FOLLOWING_FILTERS.forEach { (id, label) ->
+                        FilterChip(selected = filter == id, onClick = { filter = id }, label = { Text(label) })
+                    }
+                }
+            }
+            MediaList(vm, YouTube.filterFollowing(feed, filter))
         }
     }
 }

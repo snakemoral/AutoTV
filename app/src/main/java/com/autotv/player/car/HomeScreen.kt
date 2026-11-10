@@ -17,7 +17,7 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.withContext
 
-private fun playlistEntry(p: Playlist): Entry = Entry(p.name, "${p.items.size} itens") { screen ->
+fun playlistEntry(p: Playlist): Entry = Entry(p.name, "${p.items.size} itens") { screen ->
     val groups = p.items.groupBy { it.group ?: "Sem categoria" }
     if (groups.size > 1) {
         screen.screenManager.push(PagedScreen(screen.carContext, p.name) {

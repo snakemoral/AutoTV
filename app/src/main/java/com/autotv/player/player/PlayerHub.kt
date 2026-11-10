@@ -250,6 +250,18 @@ object PlayerHub {
     fun bufferedMs(): Long = player.bufferedPosition
     fun liveNow(): Boolean = isLive.value || player.isCurrentMediaItemLive
     fun seekTo(ms: Long) { player.seekTo(ms.coerceAtLeast(0)) }
+
+    /** Transmissão ao vivo em que dá para voltar no tempo (o YouTube guarda um trecho recente). */
+    fun liveSeekable(): Boolean = liveNow() && player.isCurrentMediaItemSeekable && durationMs() > 30_000
+
+    /** true quando o vídeo ao vivo está atrasado em relação ao "agora" (o usuário voltou no tempo). */
+    fun behindLive(): Boolean = liveSeekable() && durationMs() - player.currentPosition > 40_000
+
+    /** Volta para o ponto mais recente da transmissão. */
+    fun seekToLive() {
+        player.seekToDefaultPosition()
+        player.play()
+    }
     fun seekBy(deltaMs: Long) {
         val d = durationMs()
         var t = player.currentPosition + deltaMs

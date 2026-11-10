@@ -133,16 +133,29 @@ class MainViewModel : ViewModel() {
 
     fun clearResults() { resultsFor.value = null; ytResults.value = emptyList() }
 
-    fun selectHome(section: HomeSection, force: Boolean = false) {
+    /** Categoria escolhida em "Em alta" (nulo = tudo). */
+    val trendingCategory = MutableStateFlow<String?>(null)
+
+    fun selectTrendingCategory(id: String?) {
+        trendingCategory.value = id
+        selectHome(HomeSection.TRENDING, force = true)
+    }
+
+    /** [force] recarrega a aba; [refresh] ignora também o que estava guardado e busca de novo no YouTube. */
+    fun selectHome(section: HomeSection, force: Boolean = false, refresh: Boolean = false) {
         homeSection.value = section
         if (section == HomeSection.HISTORY) return
-        if (!force && feed.value?.first == section) return
+        if (!force && !refresh && feed.value?.first == section) return
         // O YouTube acabou com a página "Em alta" antiga: aqui ela é a mistura das categorias em alta
         // (música, jogos, filmes, ao vivo), a mesma lista que o carro mostra em "YouTube".
         if (section == HomeSection.LIVE) task({ YouTube.kiosk("live") }) { feed.value = section to it }
-        else task({
-            YouTube.homeFeed().ifEmpty { error("O YouTube não devolveu vídeos em alta agora. Tente de novo.") }
-        }) { feed.value = section to it }
+        else {
+            val cat = YouTube.CATEGORIES.firstOrNull { it.id == trendingCategory.value }
+            task({
+                (if (cat == null) YouTube.homeFeed(refresh) else YouTube.loadCategory(cat, refresh))
+                    .ifEmpty { error("O YouTube não devolveu vídeos em alta agora. Tente de novo.") }
+            }) { feed.value = section to it }
+        }
     }
 
     /** Link compartilhado a partir do app do YouTube. */

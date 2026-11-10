@@ -355,7 +355,11 @@ class CarPlayerPresentation(
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
             setShadowLayer(4f, 0f, 1f, Color.BLACK)
         }
-        timeCur = timeText().apply { text = "0:00" }
+        timeCur = timeText().apply {
+            text = "0:00"
+            setPadding(dp(8), dp(10), dp(8), dp(10))
+            setOnClickListener { kick(); if (PlayerHub.liveNow()) PlayerHub.seekToLive() }
+        }
         timeTotal = timeText().apply { text = "0:00" }
         seek = SeekView(context).apply { onUserAction = { kick() } }
         line.addView(timeCur)
@@ -564,11 +568,14 @@ class CarPlayerPresentation(
         val dur = PlayerHub.durationMs()
         val pos = PlayerHub.positionMs()
         if (live) {
-            timeCur.text = "● AO VIVO"
-            timeCur.setTextColor(0xFFFF2D55.toInt())
-            timeTotal.text = ""
-            seek.progress = 1f
-            seek.buffered = 1f
+            // Ao vivo: a barra cobre o trecho recente que dá para rever; o rótulo é o botão de voltar ao vivo.
+            val seekable = PlayerHub.liveSeekable()
+            val behind = PlayerHub.behindLive()
+            timeCur.text = if (behind) "▶▶ AO VIVO" else "● AO VIVO"
+            timeCur.setTextColor(if (behind) Color.WHITE else 0xFFFF2D55.toInt())
+            timeTotal.text = if (behind) "-" + formatDuration((dur - pos) / 1000) else ""
+            seek.progress = if (seekable && dur > 0) pos.toFloat() / dur else 1f
+            seek.buffered = if (seekable && dur > 0) PlayerHub.bufferedMs().toFloat() / dur else 1f
         } else {
             timeCur.setTextColor(Color.WHITE)
             timeCur.text = formatDuration(pos / 1000)

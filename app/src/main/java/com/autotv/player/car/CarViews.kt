@@ -44,7 +44,7 @@ class SeekView(context: Context) : View(context) {
             MotionEvent.ACTION_DOWN -> return true
             MotionEvent.ACTION_UP -> {
                 val dur = PlayerHub.durationMs()
-                if (dur > 0 && !PlayerHub.liveNow()) {
+                if (dur > 0 && (!PlayerHub.liveNow() || PlayerHub.liveSeekable())) {
                     val padX = 12 * d
                     val f = ((e.x - padX) / (width - 2 * padX)).coerceIn(0f, 1f)
                     PlayerHub.seekTo((f * dur).toLong())
