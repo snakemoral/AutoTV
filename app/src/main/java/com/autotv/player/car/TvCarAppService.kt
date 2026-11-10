@@ -3,6 +3,9 @@ package com.autotv.player.car
 import android.content.Intent
 import androidx.car.app.CarAppService
 import androidx.car.app.Screen
+import androidx.car.app.ScreenManager
+import com.autotv.player.data.Account
+import com.autotv.player.data.Store
 import androidx.car.app.Session
 import androidx.car.app.validation.HostValidator
 
@@ -23,7 +26,13 @@ class TvCarAppService : CarAppService() {
         override fun onCreateScreen(intent: Intent): Screen {
             // A superfície do carro é registrada uma vez por conexão; as telas se revezam nela.
             CarSurface.init(carContext)
-            return HomeScreen(carContext)
+            val home = HomeScreen(carContext)
+            // Abre direto em "Seguindo" quando há conta conectada ou canais salvos; "Voltar" leva ao menu.
+            if (Account.signedIn.value || Store.following.value.isNotEmpty()) {
+                carContext.getCarService(ScreenManager::class.java).push(home)
+                return followingScreen(carContext)
+            }
+            return home
         }
     }
 }

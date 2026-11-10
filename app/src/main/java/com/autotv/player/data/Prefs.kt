@@ -26,6 +26,11 @@ object Prefs {
         get() = sp.getInt("pref_h", 0)
         set(v) { sp.edit().putInt("pref_h", v).apply() }
 
+    /** Última página aberta no navegador. */
+    var browserUrl: String
+        get() = sp.getString("browser_url", null) ?: Browser.HOME
+        set(v) { sp.edit().putString("browser_url", v).apply() }
+
     /** Idioma de legenda preferido ("" = desligada). */
     var subtitleLang: String
         get() = sp.getString("sub_lang", "") ?: ""

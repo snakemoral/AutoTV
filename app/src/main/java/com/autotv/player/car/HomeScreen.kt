@@ -4,7 +4,9 @@ import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.lifecycle.lifecycleScope
 import com.autotv.player.data.Account
+import com.autotv.player.data.LocalVideos
 import com.autotv.player.data.Playlist
+import com.autotv.player.data.Prefs
 import com.autotv.player.data.Store
 import com.autotv.player.data.YouTube
 import com.autotv.player.player.PlayerHub
@@ -28,23 +30,39 @@ private fun playlistEntry(p: Playlist): Entry = Entry(p.name, "${p.items.size} i
     }
 }
 
+/** A lista "Seguindo" (vídeos das inscrições). */
+fun followingScreen(ctx: CarContext): Screen = videoList(ctx, "Seguindo") {
+    withContext(Dispatchers.IO) { Account.followingItems() }
+}
+
 class HomeScreen(ctx: CarContext) : PagedScreen(ctx, "AutoTV", isRoot = true, entries = {
     val list = ArrayList<Entry>()
     PlayerHub.nowPlaying.value?.let { now ->
         list += Entry("Tocando agora", now.title, now.thumb) { it.screenManager.push(PlayerScreen(it.carContext)) }
     }
-    list += Entry("YouTube", "Início com vídeos em alta e ao vivo") { s ->
+    list += Entry("Seguindo", "Novidades dos canais em que você é inscrito") { s ->
+        s.screenManager.push(followingScreen(s.carContext))
+    }
+    list += Entry("YouTube", "Em alta, ao vivo, categorias e busca") { s ->
         s.screenManager.push(videoList(s.carContext, "YouTube") { YouTube.homeFeed() })
     }
-    list += Entry("Ao vivo agora", "YouTube") { s ->
-        s.screenManager.push(videoList(s.carContext, "Ao vivo agora") {
-            withContext(Dispatchers.IO) { YouTube.kiosk("live") }
+    val playlists = Store.playlists.value
+    list += Entry("TV (IPTV)", if (playlists.isEmpty()) "Adicione listas no app do celular" else "${playlists.size} listas") { s ->
+        val all = Store.playlists.value
+        if (all.size == 1) playlistEntry(all[0]).onClick(s)
+        else s.screenManager.push(PagedScreen(s.carContext, "TV (IPTV)") { Store.playlists.value.map { playlistEntry(it) } })
+    }
+    list += Entry("Vídeos do celular", "Download, Filmes e outras pastas") { s ->
+        val app = s.carContext.applicationContext
+        s.screenManager.push(videoList(s.carContext, "Vídeos do celular") {
+            withContext(Dispatchers.IO) { LocalVideos.list(app) }
         })
     }
-    list += Entry("Seguindo", "Novidades dos canais em que você é inscrito") { s ->
-        s.screenManager.push(videoList(s.carContext, "Seguindo") {
-            withContext(Dispatchers.IO) { Account.followingItems() }
-        })
+    list += Entry("Navegador", "Abrir páginas da internet") { s ->
+        if (Prefs.carAdvancedUi) s.screenManager.push(BrowserScreen(s.carContext))
+        else androidx.car.app.CarToast.makeText(
+            s.carContext, "Ligue \"Interface avançada no carro\" no app do celular", androidx.car.app.CarToast.LENGTH_LONG
+        ).show()
     }
     list += Entry("Buscar no YouTube", "Digite no carro") { it.screenManager.push(YouTubeSearchScreen(it.carContext)) }
     val history = Store.history.value
@@ -59,7 +77,6 @@ class HomeScreen(ctx: CarContext) : PagedScreen(ctx, "AutoTV", isRoot = true, en
             s.screenManager.push(PagedScreen(s.carContext, "Favoritos") { itemEntries(Store.favorites.value) })
         }
     }
-    Store.playlists.value.forEach { list += playlistEntry(it) }
     list
 }) {
     init {

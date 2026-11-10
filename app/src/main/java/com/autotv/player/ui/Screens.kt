@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
@@ -84,8 +85,9 @@ fun AutoTvTheme(content: @Composable () -> Unit) {
 
 @Composable
 fun AppRoot(vm: MainViewModel) {
-    // Abre direto em "Seguindo".
-    var tab by rememberSaveable { mutableIntStateOf(1) }
+    var tab by rememberSaveable { mutableIntStateOf(0) }
+    // O navegador é criado na primeira vez que a aba Web abre e fica vivo ao trocar de aba.
+    val browser = remember { mutableStateOf<BrowserState?>(null) }
     var fullscreen by rememberSaveable { mutableStateOf(false) }
     val now by PlayerHub.nowPlaying.collectAsState()
     val busy by vm.busy.collectAsState()
@@ -112,11 +114,15 @@ fun AppRoot(vm: MainViewModel) {
                 NavigationBarItem(selected = tab == 0, onClick = { tab = 0 },
                     icon = { Icon(Icons.Default.Home, null) }, label = { Text("Início") })
                 NavigationBarItem(selected = tab == 1, onClick = { tab = 1 },
-                    icon = { Icon(Icons.Default.Person, null) }, label = { Text("Seguindo") })
+                    icon = { Icon(Icons.Default.Person, null) }, label = { Text("Seguindo", maxLines = 1) })
                 NavigationBarItem(selected = tab == 2, onClick = { tab = 2 },
                     icon = { Icon(Icons.Default.Menu, null) }, label = { Text("TV") })
                 NavigationBarItem(selected = tab == 3, onClick = { tab = 3 },
-                    icon = { Icon(Icons.Default.Favorite, null) }, label = { Text("Biblioteca") })
+                    icon = { Icon(Icons.Default.PlayArrow, null) }, label = { Text("Baixados", maxLines = 1) })
+                NavigationBarItem(selected = tab == 4, onClick = { tab = 4 },
+                    icon = { Icon(Icons.Default.Search, null) }, label = { Text("Web", maxLines = 1) })
+                NavigationBarItem(selected = tab == 5, onClick = { tab = 5 },
+                    icon = { Icon(Icons.Default.Favorite, null) }, label = { Text("Favoritos", maxLines = 1) })
             }
         }
     ) { pad ->
@@ -127,6 +133,8 @@ fun AppRoot(vm: MainViewModel) {
                 0 -> HomeTab(vm)
                 1 -> FollowingTab(vm)
                 2 -> PlaylistsTab(vm)
+                3 -> LocalTab(vm)
+                4 -> BrowserTab(browser)
                 else -> LibraryTab(vm)
             }
         }

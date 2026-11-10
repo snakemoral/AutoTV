@@ -194,6 +194,14 @@ class MainViewModel : ViewModel() {
         }
     }
 
+    // ---- Vídeos guardados no celular ----
+    val localVideos = MutableStateFlow<List<Item>>(emptyList())
+
+    fun loadLocalVideos(context: android.content.Context) {
+        val app = context.applicationContext
+        task({ com.autotv.player.data.LocalVideos.list(app) }) { localVideos.value = it }
+    }
+
     // ---- Conta Google (login por código, como nas TVs) ----
     /** Código a mostrar enquanto o usuário autoriza no navegador; nulo = sem login em andamento. */
     val loginCode = MutableStateFlow<Account.DeviceCode?>(null)

@@ -19,12 +19,26 @@ object Thumbs {
     private val failed = HashSet<String>()
     private val iconCache = HashMap<String, CarIcon>()
 
+    private var appContext: android.content.Context? = null
+
+    fun init(context: android.content.Context) { appContext = context.applicationContext }
+
     fun cached(url: String): Bitmap? = cache.get(url)
 
     fun load(url: String, targetWidth: Int = 400): Bitmap? {
         cache.get(url)?.let { return it }
         synchronized(failed) { if (url in failed) return null }
         return try {
+            if (url.startsWith("content://")) {
+                // Vídeo do próprio celular: pede a miniatura ao Android.
+                val ctx = appContext ?: throw IllegalStateException("sem contexto")
+                if (android.os.Build.VERSION.SDK_INT < 29) throw IllegalStateException("sem miniatura")
+                val bmp = ctx.contentResolver.loadThumbnail(
+                    android.net.Uri.parse(url), android.util.Size(targetWidth, targetWidth * 9 / 16), null
+                )
+                cache.put(url, bmp)
+                return bmp
+            }
             val req = Request.Builder().url(url).header("User-Agent", Http.UA_WEB).build()
             val bytes = Http.client.newCall(req).execute().use { r ->
                 if (!r.isSuccessful) null else r.body?.bytes()

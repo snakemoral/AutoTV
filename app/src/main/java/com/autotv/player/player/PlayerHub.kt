@@ -132,7 +132,9 @@ object PlayerHub {
                     Player.STATE_READY -> { status.value = null; retries = 0; failed = false; loading.value = false }
                     Player.STATE_ENDED -> {
                         loading.value = false
-                        if (nowPlaying.value?.kind == Kind.YOUTUBE && !isLive.value) next()
+                        val ended = nowPlaying.value
+                        // Passa para o próximo ao terminar um vídeo do YouTube ou um arquivo do celular.
+                        if ((ended?.kind == Kind.YOUTUBE && !isLive.value) || ended?.url?.startsWith("content://") == true) next()
                     }
                     else -> Unit
                 }

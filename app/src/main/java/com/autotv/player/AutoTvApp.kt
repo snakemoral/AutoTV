@@ -7,10 +7,15 @@ import com.autotv.player.data.Store
 import com.autotv.player.data.YouTube
 import com.autotv.player.player.PlayerHub
 
-class AutoTvApp : Application() {
+class AutoTvApp : Application(), coil.ImageLoaderFactory {
+    /** Carregador de imagens do celular, com suporte a miniatura de arquivos de vídeo. */
+    override fun newImageLoader(): coil.ImageLoader =
+        coil.ImageLoader.Builder(this).components { add(coil.decode.VideoFrameDecoder.Factory()) }.build()
+
     override fun onCreate() {
         super.onCreate()
         Prefs.init(this)
+        com.autotv.player.data.Thumbs.init(this)
         Store.init(this)
         com.autotv.player.data.Account.init(this)
         YouTube.init(Http.client)

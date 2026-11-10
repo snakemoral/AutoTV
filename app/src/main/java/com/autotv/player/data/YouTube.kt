@@ -98,6 +98,9 @@ object YouTube {
 
     fun search(query: String): List<Item> {
         val extractor = ServiceList.YouTube.getSearchExtractor(query)
+        // Pede os resultados em português (sem isso o YouTube pode devolver títulos traduzidos para o inglês).
+        extractor.forceLocalization(Localization("pt", "BR"))
+        extractor.forceContentCountry(ContentCountry("BR"))
         extractor.fetchPage()
         return extractor.initialPage.items.filterIsInstance<StreamInfoItem>().map { toItem(it) }
     }
@@ -379,6 +382,7 @@ class NewPipeDownloader(private val client: OkHttpClient) : Downloader() {
             .method(request.httpMethod(), body)
             .url(request.url())
             .addHeader("User-Agent", Http.UA_WEB)
+            .addHeader("Accept-Language", "pt-BR,pt;q=0.9")
 
         for ((name, values) in request.headers()) {
             builder.removeHeader(name)

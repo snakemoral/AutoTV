@@ -11,8 +11,8 @@ android {
         applicationId = "com.autotv.player"
         minSdk = 26
         targetSdk = 34
-        versionCode = 4
-        versionName = "0.3.1"
+        versionCode = 5
+        versionName = "0.4.0"
     }
 
     // Chave de debug fixa no repositório: assim cada build novo instala POR CIMA do anterior
@@ -82,6 +82,7 @@ dependencies {
     implementation("androidx.car.app:app:1.4.0")
 
     implementation("io.coil-kt:coil-compose:2.6.0")
+    implementation("io.coil-kt:coil-video:2.6.0")
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
