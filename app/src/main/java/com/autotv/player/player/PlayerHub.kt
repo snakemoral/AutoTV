@@ -283,16 +283,24 @@ object PlayerHub {
         } else {
             val params = player.trackSelectionParameters.buildUpon().clearOverridesOfType(C.TRACK_TYPE_VIDEO)
             if (id != "auto") {
-                val h = id.removePrefix("h:").toIntOrNull()
+                // id = "h:<altura>:<60 ou 0>". Entre os codecs com essa qualidade, usa o primeiro que o
+                // aparelho suporta (a ordem do manifesto põe primeiro os que têm aceleração).
+                val parts = id.split(":")
+                val h = parts.getOrNull(1)?.toIntOrNull()
+                val fast = parts.getOrNull(2) == "60"
+                var fallback: TrackSelectionOverride? = null
+                var chosen: TrackSelectionOverride? = null
                 outer@ for (g in player.currentTracks.groups) {
                     if (g.type != C.TRACK_TYPE_VIDEO) continue
                     for (i in 0 until g.length) {
-                        if (g.getTrackFormat(i).height == h) {
-                            params.setOverrideForType(TrackSelectionOverride(g.mediaTrackGroup, i))
-                            break@outer
-                        }
+                        val f = g.getTrackFormat(i)
+                        if (f.height != h || (f.frameRate >= 50f) != fast) continue
+                        val o = TrackSelectionOverride(g.mediaTrackGroup, i)
+                        if (g.isTrackSupported(i)) { chosen = o; break@outer }
+                        if (fallback == null) fallback = o
                     }
                 }
+                (chosen ?: fallback)?.let { params.setOverrideForType(it) }
             }
             player.trackSelectionParameters = params.build()
         }
@@ -509,21 +517,30 @@ object PlayerHub {
 
         // Qualidade
         var hasVideoOverride = false
-        var selectedHeight = -1
-        val heights = sortedSetOf<Int>()
+        var selectedKey = -1
+        // chave = altura * 2 (+1 se for 50/60 quadros por segundo); só entram qualidades que o aparelho decodifica
+        val keys = sortedSetOf<Int>()
+        val unsupported = sortedSetOf<Int>()
         for (g in groups) {
             if (g.type != C.TRACK_TYPE_VIDEO) continue
             if (params.overrides.containsKey(g.mediaTrackGroup)) hasVideoOverride = true
             for (i in 0 until g.length) {
-                val h = g.getTrackFormat(i).height
-                if (h > 0) heights += h
-                if (g.isTrackSelected(i) && h > 0) selectedHeight = h
+                val f = g.getTrackFormat(i)
+                if (f.height <= 0) continue
+                val key = f.height * 2 + if (f.frameRate >= 50f) 1 else 0
+                if (g.isTrackSupported(i)) keys += key else unsupported += key
+                if (g.isTrackSelected(i)) selectedKey = key
             }
         }
+        if (keys.isEmpty()) keys += unsupported
         qualityOptions.value =
-            if (heights.isEmpty()) emptyList()
+            if (keys.isEmpty()) emptyList()
             else listOf(Option("auto", "Automático", !hasVideoOverride)) +
-                heights.reversed().map { Option("h:$it", "${it}p", hasVideoOverride && it == selectedHeight) }
+                keys.reversed().map { key ->
+                    val h = key / 2
+                    val fast = key % 2 == 1
+                    Option("h:$h:${if (fast) 60 else 0}", if (fast) "${h}p60" else "${h}p", hasVideoOverride && key == selectedKey)
+                }
 
         // Áudio
         val audio = ArrayList<Option>()

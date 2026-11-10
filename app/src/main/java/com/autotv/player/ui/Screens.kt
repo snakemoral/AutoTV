@@ -98,7 +98,13 @@ fun AppRoot(vm: MainViewModel) {
         message?.let { snackbar.showSnackbar(it); vm.clearMessage() }
     }
     LaunchedEffect(now) { if (now == null) fullscreen = false }
-    FullscreenEffect(fullscreen && now != null)
+    val web = browser.value
+    val webFullscreen = tab == 4 && web != null && (web.fill || web.siteFullscreen != null)
+    FullscreenEffect((fullscreen && now != null) || webFullscreen)
+    if (webFullscreen && web != null) {
+        BrowserFullscreen(web)
+        return
+    }
 
     val current = now
     if (fullscreen && current != null) {

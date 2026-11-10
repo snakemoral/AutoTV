@@ -1,5 +1,5 @@
 # Estado do projeto (para retomar após limite de uso)
-Última atualização: 2026-11-10 (v0.4.0).
+Última atualização: 2026-11-10 (v0.4.1).
 
 - Repositório: github.com/snakemoral/AutoTV, branch main. Cada push compila sozinho (GitHub Actions) e
   publica o APK na Release "latest". Trabalhar no clone em /home/claude/autotv-repo.
@@ -20,7 +20,11 @@
   dá para ler), navegador no celular (ui/MoreTabs.kt) e no carro (car/CarBrowser.kt, WebView na tela
   virtual; digitação pelo teclado do Android Auto), carro abre em Seguindo, menu do carro com TV (IPTV)
   no topo, busca forçada em pt-BR. Celular voltou a abrir em Início.
+- v0.4.1: manifesto DASH com todos os codecs/qualidades (4K, 60 fps; AV1 só se for o único no topo; HDR só
+  sem alternativa) e UMA versão de áudio por idioma (as repetições vinham do menu embutido do PlayerView,
+  que lista cada representação). Navegador: botões "pausar/tocar" e "tela cheia" próprios (JS em
+  data/Browser.kt) e suporte à tela cheia pedida pelo site, no celular e no carro.
 - Confirmado pelo usuário: tela dividida do Android Auto funciona (AutoTV no painel grande + cartão de música).
-- NÃO testado em aparelho: v0.3.1, v0.4.0 e o login Google da v0.3.0. O login e a leitura das inscrições da conta dependem de
+- NÃO testado em aparelho: v0.4.1. O usuário testou a v0.4.0 (reclamou só de áudio repetido e do navegador). O login e a leitura das inscrições da conta dependem de
   respostas do YouTube que não foi possível conferir daqui.
 - Regra para quem continuar: LER o código antes de escrever; nunca sobrescrever arquivos inteiros sem ler.

@@ -1,6 +1,7 @@
 package com.autotv.player.ui
 
 import android.graphics.Bitmap
+import android.view.View
 import android.view.ViewGroup
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -26,6 +27,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
@@ -85,6 +87,16 @@ class BrowserState(val web: WebView) {
     var url by mutableStateOf("")
     var canGoBack by mutableStateOf(false)
     var progress by mutableStateOf(100)
+    /** Tela cheia: só a página aparece, deitada, sem as barras do app. */
+    var fill by mutableStateOf(false)
+    /** Tela cheia pedida pelo próprio site (botão do player da página). */
+    var siteFullscreen by mutableStateOf<View?>(null)
+    var exitSiteFullscreen: (() -> Unit)? = null
+
+    fun setFillMode(on: Boolean) {
+        fill = on
+        web.evaluateJavascript(Browser.jsFill(on), null)
+    }
 }
 
 private fun createBrowser(context: android.content.Context): BrowserState {
@@ -108,6 +120,18 @@ private fun createBrowser(context: android.content.Context): BrowserState {
     }
     web.webChromeClient = object : WebChromeClient() {
         override fun onProgressChanged(view: WebView, newProgress: Int) { state.progress = newProgress }
+
+        // O site pediu tela cheia (botão do player da página): mostra o vídeo por cima de tudo.
+        override fun onShowCustomView(view: View, callback: WebChromeClient.CustomViewCallback) {
+            if (state.siteFullscreen != null) { callback.onCustomViewHidden(); return }
+            state.exitSiteFullscreen = { callback.onCustomViewHidden() }
+            state.siteFullscreen = view
+        }
+
+        override fun onHideCustomView() {
+            state.siteFullscreen = null
+            state.exitSiteFullscreen = null
+        }
     }
     web.loadUrl(Prefs.browserUrl)
     return state
@@ -142,6 +166,11 @@ fun BrowserTab(holder: MutableState<BrowserState?>) {
             )
             IconButton(onClick = { state.web.reload() }) { Icon(Icons.Default.Refresh, "Recarregar") }
         }
+        // Controles para vídeos de sites que não mostram os próprios botões.
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = { state.web.evaluateJavascript(Browser.JS_TOGGLE_PLAY, null) }) { Text("⏯  Pausar / tocar") }
+            TextButton(onClick = { state.setFillMode(true) }) { Text("⛶  Tela cheia") }
+        }
         if (state.progress < 100) LinearProgressIndicator(progress = { state.progress / 100f }, modifier = Modifier.fillMaxWidth())
         AndroidView(
             factory = {
@@ -150,5 +179,40 @@ fun BrowserTab(holder: MutableState<BrowserState?>) {
             },
             modifier = Modifier.fillMaxSize()
         )
+    }
+}
+
+/** Navegador em tela cheia: só a página (ou o vídeo que o site pôs em tela cheia) e dois botões discretos. */
+@Composable
+fun BrowserFullscreen(state: BrowserState) {
+    val site = state.siteFullscreen
+    BackHandler {
+        if (site != null) state.exitSiteFullscreen?.invoke() else state.setFillMode(false)
+    }
+    androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
+        // A página fica sempre por baixo (se sair da tela, o site pode parar o vídeo).
+        AndroidView(
+            factory = {
+                (state.web.parent as? ViewGroup)?.removeView(state.web)
+                state.web
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+        if (site != null) {
+            androidx.compose.runtime.key(site) {
+                AndroidView(
+                    factory = {
+                        (site.parent as? ViewGroup)?.removeView(site)
+                        site
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
+        } else {
+            Row(Modifier.align(Alignment.TopEnd).padding(8.dp)) {
+                TextButton(onClick = { state.web.evaluateJavascript(Browser.JS_TOGGLE_PLAY, null) }) { Text("⏯") }
+                TextButton(onClick = { state.setFillMode(false) }) { Text("✕ Sair") }
+            }
+        }
     }
 }

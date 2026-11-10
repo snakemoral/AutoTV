@@ -125,6 +125,8 @@ class CarBrowserPresentation(
     private lateinit var address: TextView
     private lateinit var web: WebView
     private lateinit var fullscreen: FrameLayout
+    private lateinit var fillBar: LinearLayout
+    private lateinit var arrows: View
     private var customView: View? = null
     private var customCallback: WebChromeClient.CustomViewCallback? = null
 
@@ -215,7 +217,9 @@ class CarBrowserPresentation(
             }
         }
         bar.addView(address, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(8) })
-        bar.addView(pill("⌨ Digitar") { onAskText("Texto para o campo da página") { typed -> typeIntoPage(typed) } }, LinearLayout.LayoutParams(gap))
+        bar.addView(pill("⏯") { web.evaluateJavascript(Browser.JS_TOGGLE_PLAY, null) }, LinearLayout.LayoutParams(gap))
+        bar.addView(pill("⛶") { setFill(true) }, LinearLayout.LayoutParams(gap))
+        bar.addView(pill("⌨") { onAskText("Texto para o campo da página") { typed -> typeIntoPage(typed) } }, LinearLayout.LayoutParams(gap))
         bar.addView(pill("↵") { pressEnter() }, LinearLayout.LayoutParams(gap))
         bar.addView(pill("✕") { onExit() }, LinearLayout.LayoutParams(gap))
         content.addView(bar, LinearLayout.LayoutParams(-1, -2))
@@ -279,6 +283,16 @@ class CarBrowserPresentation(
         arrows.addView(arrow("▲", -1), LinearLayout.LayoutParams(dp(52), dp(52)).apply { bottomMargin = dp(14) })
         arrows.addView(arrow("▼", +1), LinearLayout.LayoutParams(dp(52), dp(52)))
         body.addView(arrows, FrameLayout.LayoutParams(-2, -2, Gravity.END or Gravity.CENTER_VERTICAL).apply { rightMargin = dp(10) })
+        // Botões discretos que ficam sobre o vídeo na tela cheia do app.
+        fillBar = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            alpha = 0.6f
+            visibility = View.GONE
+        }
+        fillBar.addView(pill("⏯") { web.evaluateJavascript(Browser.JS_TOGGLE_PLAY, null) })
+        fillBar.addView(pill("✕ Sair da tela cheia") { setFill(false) }, LinearLayout.LayoutParams(gap))
+        body.addView(fillBar, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply { setMargins(dp(12), dp(12), 0, 0) })
+        this.arrows = arrows
         content.addView(body, LinearLayout.LayoutParams(-1, 0, 1f))
 
         fullscreen = FrameLayout(context).apply {
@@ -300,6 +314,14 @@ class CarBrowserPresentation(
         val cb = customCallback
         customCallback = null
         if (notify) cb?.onCustomViewHidden()
+    }
+
+    /** Tela cheia do app: some a barra e o maior vídeo da página ocupa a tela toda. */
+    private fun setFill(on: Boolean) {
+        bar.visibility = if (on) View.GONE else View.VISIBLE
+        arrows.visibility = if (on) View.GONE else View.VISIBLE
+        fillBar.visibility = if (on) View.VISIBLE else View.GONE
+        web.evaluateJavascript(Browser.jsFill(on), null)
     }
 
     /** Escreve o texto no campo que está selecionado na página. */

@@ -253,6 +253,7 @@ object YouTube {
                 val label = if (best.audioTrackType?.name == "ORIGINAL" && !name.contains("original", true)) "$name (original)" else name
                 AudioOpt(label, best.content)
             }
+            .distinctBy { it.label }
 
         val subs = info.subtitles.filter { it.isUrl }.mapNotNull { s ->
             val (mime, prio) = when (s.format) {
@@ -295,38 +296,51 @@ object YouTube {
         }
         if (vids.isEmpty() || auds.isEmpty()) return null
 
-        // Uma família de codec só (o player não alterna entre codecs). H.264 primeiro: roda em qualquer aparelho.
-        val families = vids.groupBy { it.codec.substringBefore('.') }
-        val top = minOf(MAX_DEFAULT_HEIGHT, vids.maxOf { it.height })
-        val family = listOf("avc1", "vp9", "vp09").mapNotNull { families[it] }
-            .firstOrNull { list -> list.maxOf { it.height } >= top }
-            ?: families.values.maxByOrNull { list -> list.maxOf { it.height } }!!
-        val reps = family.groupBy { it.height to it.fps }.map { (_, l) -> l.maxByOrNull { it.bitrate }!! }
-            .sortedByDescending { it.bitrate }
+        // Todas as qualidades que o YouTube oferece (até 4K/8K e 60 fps), agrupadas por codec.
+        // HDR só entra se não houver versão normal (em tela comum o HDR fica com cores lavadas).
+        fun isHdr(c: String) = c.startsWith("vp09.02") || c.startsWith("vp9.2") ||
+            (c.startsWith("av01") && c.split('.').getOrNull(3) == "10")
+        val sdr = vids.filter { !isHdr(it.codec) }.ifEmpty { vids }
+        val order = listOf("avc1", "vp9", "vp09", "av01")
+        var families = sdr.groupBy { it.codec.substringBefore('.') }.toList()
+            .sortedBy { (name, _) -> order.indexOf(name).let { if (it < 0) order.size else it } }
+        // AV1 costuma ser decodificado sem aceleração (trava): só entra se for o único com a resolução máxima.
+        val others = families.filter { it.first != "av01" }
+        if (others.isNotEmpty()) {
+            val av1Top = families.firstOrNull { it.first == "av01" }?.second?.maxOf { it.height } ?: 0
+            if (av1Top <= others.maxOf { f -> f.second.maxOf { it.height } }) families = others
+        }
 
         val sb = StringBuilder()
         sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
         sb.append("<MPD xmlns=\"urn:mpeg:dash:schema:mpd:2011\" profiles=\"urn:mpeg:dash:profile:isoff-on-demand:2011\" ")
         sb.append("type=\"static\" mediaPresentationDuration=\"PT${durationSec}S\" minBufferTime=\"PT1.5S\"><Period>")
 
-        sb.append("<AdaptationSet id=\"0\" contentType=\"video\" mimeType=\"${reps.first().format!!.mimeType}\" subsegmentAlignment=\"true\">")
-        for (v in reps) {
-            sb.append("<Representation id=\"v${v.itag}\" codecs=\"${esc(v.codec)}\" bandwidth=\"${v.bitrate}\" ")
-            sb.append("width=\"${v.width}\" height=\"${v.height}\"")
-            if (v.fps > 0) sb.append(" frameRate=\"${v.fps}\"")
-            sb.append("><BaseURL>${esc(v.content)}</BaseURL>")
-            sb.append("<SegmentBase indexRange=\"${v.indexStart}-${v.indexEnd}\"><Initialization range=\"${v.initStart}-${v.initEnd}\"/></SegmentBase>")
-            sb.append("</Representation>")
+        var setId = 0
+        for ((_, family) in families) {
+            val reps = family.groupBy { it.height to it.fps }.map { (_, l) -> l.maxByOrNull { it.bitrate }!! }
+                .sortedByDescending { it.bitrate }
+            sb.append("<AdaptationSet id=\"${setId++}\" contentType=\"video\" mimeType=\"${reps.first().format!!.mimeType}\" subsegmentAlignment=\"true\">")
+            for (v in reps) {
+                sb.append("<Representation id=\"v${v.itag}\" codecs=\"${esc(v.codec)}\" bandwidth=\"${v.bitrate}\" ")
+                sb.append("width=\"${v.width}\" height=\"${v.height}\"")
+                if (v.fps > 0) sb.append(" frameRate=\"${v.fps}\"")
+                sb.append("><BaseURL>${esc(v.content)}</BaseURL>")
+                sb.append("<SegmentBase indexRange=\"${v.indexStart}-${v.indexEnd}\"><Initialization range=\"${v.initStart}-${v.initEnd}\"/></SegmentBase>")
+                sb.append("</Representation>")
+            }
+            sb.append("</AdaptationSet>")
         }
-        sb.append("</AdaptationSet>")
 
         val ptBr = Locale("pt", "BR")
-        var setId = 1
         val groups = auds
             .groupBy { "${it.audioLocale?.toLanguageTag().orEmpty()}|${it.audioTrackType?.name.orEmpty()}|${it.audioTrackName.orEmpty()}" }
             .values
         for (g in groups) {
-            val sameFormat = g.filter { it.format == MediaFormat.M4A }.ifEmpty { g.filter { it.format == g.first().format } }
+            // Uma única versão por idioma: a de maior qualidade que qualquer aparelho toca (AAC ou Opus).
+            // (Várias versões do mesmo idioma apareciam repetidas no menu de áudio.)
+            val playable = g.filter { it.codec.startsWith("mp4a") || it.codec.startsWith("opus") }.ifEmpty { g }
+            val sameFormat = listOf(playable.maxByOrNull { it.bitrate }!!)
             val first = sameFormat.first()
             val original = first.audioTrackType?.name == "ORIGINAL"
             val name = first.audioTrackName?.takeIf { it.isNotBlank() }
