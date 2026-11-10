@@ -12,6 +12,7 @@ class AutoTvApp : Application() {
         super.onCreate()
         Prefs.init(this)
         Store.init(this)
+        com.autotv.player.data.Account.init(this)
         YouTube.init(Http.client)
         PlayerHub.init(this)
     }

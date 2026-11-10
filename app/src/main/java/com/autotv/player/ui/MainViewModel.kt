@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.autotv.player.data.Account
 import com.autotv.player.data.Channel
 import com.autotv.player.data.Http
 import com.autotv.player.data.Item
@@ -13,7 +14,9 @@ import com.autotv.player.data.Store
 import com.autotv.player.data.YouTube
 import com.autotv.player.data.streamItem
 import com.autotv.player.player.PlayerHub
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -155,31 +158,102 @@ class MainViewModel : ViewModel() {
 
     fun unfollow(url: String) = Store.unfollow(url)
 
-    /** Importa o arquivo subscriptions.csv do Google Takeout. */
+    /** Importa as inscrições do Google Takeout: aceita o subscriptions.csv ou o .zip inteiro do Takeout. */
     fun importSubscriptions(resolver: ContentResolver, uri: Uri) {
         task({
-            val text = resolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-                ?: error("Não foi possível abrir o arquivo")
-            val channels = text.lineSequence().drop(1).mapNotNull { line ->
-                val parts = line.split(',', limit = 3)
-                if (parts.size < 3 || parts[0].isBlank()) null
-                else Channel("https://www.youtube.com/channel/${parts[0].trim()}", parts[2].trim().trim('"').ifBlank { "Canal" })
-            }.toList()
-            require(channels.isNotEmpty()) { "Nenhuma inscrição encontrada. Use o arquivo subscriptions.csv do Google Takeout." }
+            val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Não foi possível abrir o arquivo")
+            val text = if (bytes.size > 3 && bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte()) {
+                // É o .zip do Takeout: procura o CSV de inscrições lá dentro.
+                var found: String? = null
+                java.util.zip.ZipInputStream(bytes.inputStream()).use { zip ->
+                    while (found == null) {
+                        val e = zip.nextEntry ?: break
+                        if (!e.isDirectory && e.name.endsWith(".csv", true)) {
+                            val t = zip.readBytes().toString(Charsets.UTF_8)
+                            if (CHANNEL_ID.containsMatchIn(t)) found = t
+                        }
+                    }
+                }
+                found ?: error("Não achei o arquivo de inscrições dentro do .zip")
+            } else bytes.toString(Charsets.UTF_8)
+
+            val channels = text.lineSequence().mapNotNull { line ->
+                val id = CHANNEL_ID.find(line)?.value ?: return@mapNotNull null
+                // Formato do Takeout: id, endereço, nome. O nome é o que vem depois da segunda vírgula.
+                val name = line.split(',', limit = 3).getOrNull(2)?.trim()?.trim('"')?.ifBlank { null } ?: "Canal"
+                Channel("https://www.youtube.com/channel/$id", name)
+            }.distinctBy { it.url }.toList()
+            require(channels.isNotEmpty()) {
+                "Nenhuma inscrição encontrada nesse arquivo. Escolha o subscriptions.csv (ou inscrições.csv) do Google Takeout."
+            }
             channels
         }) {
             Store.followAll(it)
             message.value = "${it.size} canais importados"
+            loadFollowingFeed(force = true)
         }
     }
 
-    /** Novidades dos canais seguidos (intercaladas para não ficar um canal só). */
+    // ---- Conta Google (login por código, como nas TVs) ----
+    /** Código a mostrar enquanto o usuário autoriza no navegador; nulo = sem login em andamento. */
+    val loginCode = MutableStateFlow<Account.DeviceCode?>(null)
+    val signedIn = Account.signedIn
+    private var loginJob: Job? = null
+
+    fun startLogin() {
+        loginJob?.cancel()
+        loginJob = viewModelScope.launch {
+            try {
+                val code = withContext(Dispatchers.IO) { Account.requestCode() }
+                loginCode.value = code
+                val ok = withContext(Dispatchers.IO) { Account.awaitAuthorization(code) }
+                loginCode.value = null
+                if (!ok) { message.value = "O código venceu. Toque em Entrar para gerar outro."; return@launch }
+                message.value = "Conta conectada"
+                // Tenta também copiar a lista de canais para o app (se a API permitir).
+                val channels = withContext(Dispatchers.IO) { runCatching { Account.subscribedChannels() }.getOrDefault(emptyList()) }
+                if (channels.isNotEmpty()) {
+                    Store.followAll(channels)
+                    message.value = "Conta conectada: ${channels.size} canais"
+                }
+                loadFollowingFeed(force = true)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                loginCode.value = null
+                message.value = e.message ?: e.javaClass.simpleName
+            }
+        }
+    }
+
+    fun cancelLogin() { loginJob?.cancel(); loginCode.value = null }
+
+    fun signOut() { Account.signOut(); followingFeedKey = null; followingFeed.value = emptyList(); loadFollowingFeed() }
+
+    /** Novidades de "Seguindo": pela conta Google, se conectada; senão pelos canais salvos. */
     fun loadFollowingFeed(force: Boolean = false) {
-        val channels = following.value.take(20)
-        val key = channels.joinToString("|") { it.url }
+        val key = "${Account.signedIn.value}|" + following.value.joinToString("|") { it.url }
         if (!force && key == followingFeedKey) return
         followingFeedKey = key
-        if (channels.isEmpty()) { followingFeed.value = emptyList(); return }
-        task({ YouTube.followingFeed(channels) }) { followingFeed.value = it }
+        if (!Account.signedIn.value && following.value.isEmpty()) { followingFeed.value = emptyList(); return }
+        followingLoading.value = true
+        viewModelScope.launch {
+            try {
+                followingFeed.value = withContext(Dispatchers.IO) { Account.followingItems(force) }
+                followingError.value = null
+            } catch (e: Exception) {
+                followingFeed.value = emptyList()
+                followingError.value = e.message ?: e.javaClass.simpleName
+            } finally {
+                followingLoading.value = false
+            }
+        }
+    }
+
+    val followingLoading = MutableStateFlow(false)
+    val followingError = MutableStateFlow<String?>(null)
+
+    private companion object {
+        val CHANNEL_ID = Regex("UC[\\w-]{22}")
     }
 }

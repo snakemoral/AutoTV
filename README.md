@@ -1,4 +1,4 @@
-# AutoTV (v0.2.0)
+# AutoTV (v0.3.0)
 
 Player de TV (listas M3U/IPTV) e YouTube para Android, com tela para o Android Auto.
 
@@ -16,8 +16,10 @@ favoritos e listas. Player desenhado numa tela virtual (VirtualDisplay) com bot�
 ±10 s, brilho (+/−), qualidade, áudio e legendas. Em Biblioteca há um interruptor "Interface avançada no
 carro": se a tela do carro ficar preta, desligue para usar o modo simples.
 
-**Login com conta Google: NÃO existe.** A biblioteca de YouTube usada não suporta contas. No lugar há
-"Seguindo" (importa suas inscrições pelo Takeout).
+**Conta Google:** em Seguindo > "Entrar com Google" o app mostra um código para digitar em
+google.com/device (o mesmo método das TVs). A senha e a verificação em duas etapas ficam no navegador;
+o app guarda só uma chave do YouTube, cifrada, que pode ser revogada em myaccount.google.com/permissions.
+Sem login, dá para importar o `subscriptions.csv` (ou o .zip) do Google Takeout.
 
 ## Gerar o APK (GitHub)
 1. Envie esta pasta para o repositório (`git add -A`, `git commit`, `git push`). O arquivo

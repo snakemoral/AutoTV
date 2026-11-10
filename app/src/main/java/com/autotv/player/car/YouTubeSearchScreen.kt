@@ -10,6 +10,7 @@ import androidx.car.app.model.SearchTemplate
 import androidx.car.app.model.Template
 import androidx.lifecycle.lifecycleScope
 import com.autotv.player.data.Item
+import com.autotv.player.data.Prefs
 import com.autotv.player.data.YouTube
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -29,6 +30,11 @@ class YouTubeSearchScreen(ctx: CarContext) : Screen(ctx) {
 
     private fun search(query: String) {
         if (query.isBlank()) return
+        if (Prefs.carAdvancedUi) {
+            // Resultados em cartões grandes, na tela desenhada pelo app.
+            screenManager.push(videoList(carContext, "Busca: $query") { withContext(Dispatchers.IO) { YouTube.search(query) } })
+            return
+        }
         loading = true; error = null; invalidate()
         lifecycleScope.launch {
             try {

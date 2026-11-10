@@ -25,7 +25,11 @@ import org.schabi.newpipe.extractor.playlist.PlaylistInfo
 import org.schabi.newpipe.extractor.stream.DeliveryMethod
 import org.schabi.newpipe.extractor.stream.StreamInfo
 import org.schabi.newpipe.extractor.stream.StreamInfoItem
+import org.schabi.newpipe.extractor.stream.AudioStream
 import org.schabi.newpipe.extractor.stream.StreamType
+import org.schabi.newpipe.extractor.stream.VideoStream
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.util.Locale
 
 data class VideoOpt(val label: String, val height: Int, val url: String)
@@ -43,7 +47,9 @@ data class YtMedia(
     val videos: List<VideoOpt>,
     val audios: List<AudioOpt>,
     val subs: List<SubOpt>,
-    val durationSec: Long
+    val durationSec: Long,
+    /** Manifesto DASH montado pelo app (vídeos gravados): permite qualidade automática. */
+    val dash: String? = null
 )
 
 data class Category(val id: String, val title: String, val kiosk: String? = null, val query: String? = null)
@@ -157,15 +163,50 @@ object YouTube {
         }
     }
 
+    private val CHANNEL_ID = Regex("UC[\\w-]{22}")
+    private val RSS_ENTRY = Regex("<entry>(.*?)</entry>", RegexOption.DOT_MATCHES_ALL)
+
+    private fun xmlText(s: String) = s.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"")
+        .replace("&#39;", "'").replace("&apos;", "'").replace("&amp;", "&")
+
+    /** Últimos vídeos de um canal pelo feed RSS público do YouTube (leve: uma requisição). */
+    private fun rssOf(ch: Channel): List<Pair<Item, Long>> {
+        val id = CHANNEL_ID.find(ch.url)?.value ?: return latestOf(ch)
+        val xml = Http.getWeb("https://www.youtube.com/feeds/videos.xml?channel_id=$id")
+        return RSS_ENTRY.findAll(xml).take(5).mapNotNull { m ->
+            val e = m.groupValues[1]
+            val vid = e.substringAfter("<yt:videoId>", "").substringBefore("</yt:videoId>").trim()
+            if (vid.length != 11) return@mapNotNull null
+            val title = xmlText(e.substringAfter("<title>", "").substringBefore("</title>"))
+            val published = e.substringAfter("<published>", "").substringBefore("</published>").trim()
+            val time = runCatching { java.time.OffsetDateTime.parse(published).toInstant().toEpochMilli() }.getOrDefault(0L)
+            youtubeItem(title, "https://www.youtube.com/watch?v=$vid", ch.name,
+                "https://i.ytimg.com/vi/$vid/mqdefault.jpg", false, 0, ch.url) to time
+        }.toList()
+    }
+
+    private var feedCache: Triple<String, Long, List<Item>>? = null
+
     /** Novidades dos canais seguidos, mais recentes primeiro. BLOQUEANTE (chame em Dispatchers.IO). */
-    fun followingFeed(channels: List<Channel>): List<Item> = runBlocking(Dispatchers.IO) {
-        channels.take(20)
-            .map { ch -> async { runCatching { latestOf(ch) }.getOrDefault(emptyList()) } }
-            .awaitAll()
-            .flatten()
-            .sortedByDescending { it.second }
-            .map { it.first }
-            .distinctBy { it.id }
+    fun followingFeed(channels: List<Channel>, force: Boolean = false): List<Item> {
+        val list = channels.take(300)
+        val key = list.joinToString("|") { it.url }
+        feedCache?.let { (k, t, items) ->
+            if (!force && k == key && System.currentTimeMillis() - t < 5 * 60 * 1000L) return items
+        }
+        val gate = Semaphore(8)
+        val items = runBlocking(Dispatchers.IO) {
+            list.map { ch ->
+                async {
+                    gate.withPermit {
+                        runCatching { rssOf(ch) }.recoverCatching { latestOf(ch) }.getOrDefault(emptyList())
+                    }
+                }
+            }.awaitAll()
+        }.flatten().sortedByDescending { it.second }.map { it.first }.distinctBy { it.id }.take(120)
+        if (items.isEmpty()) error("Não foi possível carregar os vídeos dos canais seguidos. Verifique a internet e tente de novo.")
+        feedCache = Triple(key, System.currentTimeMillis(), items)
+        return items
     }
 
     fun itemFromLink(url: String): Item {
@@ -230,7 +271,89 @@ object YouTube {
             .maxByOrNull { it.height }?.content
 
         if (hls == null && videos.isEmpty() && muxed == null) error("Nenhum stream reproduzível encontrado para este vídeo")
-        return YtMedia(info.name, live, if (live || (videos.isEmpty() && muxed == null)) hls else null, muxed, videos, audios, subs, info.duration)
+        val dash = if (live) null else runCatching { buildDash(info.duration, videoOnly, audioStreams, subs) }.getOrNull()
+        return YtMedia(info.name, live, if (live || (videos.isEmpty() && muxed == null)) hls else null, muxed, videos, audios, subs, info.duration, dash)
+    }
+
+    private fun esc(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
+
+    /**
+     * Monta um manifesto DASH com todas as qualidades de vídeo, faixas de áudio e legendas.
+     * Com ele o player troca de qualidade sozinho conforme a internet ("Automático").
+     * Devolve null se o YouTube não informou os dados necessários (aí o player usa o modo antigo).
+     */
+    private fun buildDash(durationSec: Long, videoOnly: List<VideoStream>, audioStreams: List<AudioStream>, subs: List<SubOpt>): String? {
+        if (durationSec <= 0) return null
+        val vids = videoOnly.filter {
+            it.initEnd > 0 && it.indexEnd > it.indexStart && it.bitrate > 0 && !it.codec.isNullOrBlank() && it.format != null
+        }
+        val auds = audioStreams.filter {
+            it.initEnd > 0 && it.indexEnd > it.indexStart && it.bitrate > 0 && !it.codec.isNullOrBlank() && it.format != null
+        }
+        if (vids.isEmpty() || auds.isEmpty()) return null
+
+        // Uma família de codec só (o player não alterna entre codecs). H.264 primeiro: roda em qualquer aparelho.
+        val families = vids.groupBy { it.codec.substringBefore('.') }
+        val top = minOf(MAX_DEFAULT_HEIGHT, vids.maxOf { it.height })
+        val family = listOf("avc1", "vp9", "vp09").mapNotNull { families[it] }
+            .firstOrNull { list -> list.maxOf { it.height } >= top }
+            ?: families.values.maxByOrNull { list -> list.maxOf { it.height } }!!
+        val reps = family.groupBy { it.height to it.fps }.map { (_, l) -> l.maxByOrNull { it.bitrate }!! }
+            .sortedByDescending { it.bitrate }
+
+        val sb = StringBuilder()
+        sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
+        sb.append("<MPD xmlns=\"urn:mpeg:dash:schema:mpd:2011\" profiles=\"urn:mpeg:dash:profile:isoff-on-demand:2011\" ")
+        sb.append("type=\"static\" mediaPresentationDuration=\"PT${durationSec}S\" minBufferTime=\"PT1.5S\"><Period>")
+
+        sb.append("<AdaptationSet id=\"0\" contentType=\"video\" mimeType=\"${reps.first().format!!.mimeType}\" subsegmentAlignment=\"true\">")
+        for (v in reps) {
+            sb.append("<Representation id=\"v${v.itag}\" codecs=\"${esc(v.codec)}\" bandwidth=\"${v.bitrate}\" ")
+            sb.append("width=\"${v.width}\" height=\"${v.height}\"")
+            if (v.fps > 0) sb.append(" frameRate=\"${v.fps}\"")
+            sb.append("><BaseURL>${esc(v.content)}</BaseURL>")
+            sb.append("<SegmentBase indexRange=\"${v.indexStart}-${v.indexEnd}\"><Initialization range=\"${v.initStart}-${v.initEnd}\"/></SegmentBase>")
+            sb.append("</Representation>")
+        }
+        sb.append("</AdaptationSet>")
+
+        val ptBr = Locale("pt", "BR")
+        var setId = 1
+        val groups = auds
+            .groupBy { "${it.audioLocale?.toLanguageTag().orEmpty()}|${it.audioTrackType?.name.orEmpty()}|${it.audioTrackName.orEmpty()}" }
+            .values
+        for (g in groups) {
+            val sameFormat = g.filter { it.format == MediaFormat.M4A }.ifEmpty { g.filter { it.format == g.first().format } }
+            val first = sameFormat.first()
+            val original = first.audioTrackType?.name == "ORIGINAL"
+            val name = first.audioTrackName?.takeIf { it.isNotBlank() }
+                ?: first.audioLocale?.getDisplayLanguage(ptBr)?.replaceFirstChar { it.uppercase() }
+                ?: "Padrão"
+            val label = if (original && !name.contains("original", true)) "$name (original)" else name
+            sb.append("<AdaptationSet id=\"${setId++}\" contentType=\"audio\" mimeType=\"${first.format!!.mimeType}\" subsegmentAlignment=\"true\"")
+            first.audioLocale?.toLanguageTag()?.takeIf { it.isNotBlank() && it != "und" }?.let { sb.append(" lang=\"${esc(it)}\"") }
+            sb.append("><Label>${esc(label)}</Label>")
+            if (groups.size > 1) {
+                sb.append("<Role schemeIdUri=\"urn:mpeg:dash:role:2011\" value=\"${if (original) "main" else "dub"}\"/>")
+            }
+            for (a in sameFormat.distinctBy { it.itag }) {
+                sb.append("<Representation id=\"a${setId}_${a.itag}\" codecs=\"${esc(a.codec)}\" bandwidth=\"${a.bitrate}\">")
+                sb.append("<BaseURL>${esc(a.content)}</BaseURL>")
+                sb.append("<SegmentBase indexRange=\"${a.indexStart}-${a.indexEnd}\"><Initialization range=\"${a.initStart}-${a.initEnd}\"/></SegmentBase>")
+                sb.append("</Representation>")
+            }
+            sb.append("</AdaptationSet>")
+        }
+
+        for ((i, s) in subs.withIndex()) {
+            if (s.mime != "text/vtt" && s.mime != "application/ttml+xml") continue
+            sb.append("<AdaptationSet id=\"${setId++}\" contentType=\"text\" mimeType=\"${s.mime}\" lang=\"${esc(s.lang)}\">")
+            sb.append("<Label>${esc(s.label)}</Label>")
+            sb.append("<Representation id=\"s$i\" bandwidth=\"256\"><BaseURL>${esc(s.url)}</BaseURL></Representation>")
+            sb.append("</AdaptationSet>")
+        }
+        sb.append("</Period></MPD>")
+        return sb.toString()
     }
 
     /** Índice da qualidade padrão: a maior que não passe da preferida (ou de 1080p). */

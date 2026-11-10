@@ -14,7 +14,9 @@ import androidx.media3.common.Tracks
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.common.MimeTypes
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.MediaSource
@@ -79,7 +81,8 @@ object PlayerHub {
     private var selAudio = 0
     private var selSub = -1
 
-    private fun streamMode() = yt?.let { it.hls == null } ?: false
+    /** true = modo antigo (um stream fixo por vez). Com HLS ou DASH o player usa trilhas e tem "Automático". */
+    private fun streamMode() = yt?.let { it.hls == null && it.dash == null } ?: false
 
     fun init(context: Context) {
         val app = context.applicationContext
@@ -258,8 +261,10 @@ object PlayerHub {
             applyYt(keepPosition = true)
         } else {
             val builder = player.trackSelectionParameters.buildUpon()
+            val remember = yt?.dash != null
             if (id == "off") {
                 builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                if (remember) Prefs.subtitleLang = ""
             } else {
                 val parts = id.split(":")
                 val g = parts.getOrNull(1)?.toIntOrNull() ?: return
@@ -267,6 +272,7 @@ object PlayerHub {
                 val group = player.currentTracks.groups.getOrNull(g) ?: return
                 builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
                     .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, t))
+                if (remember) Prefs.subtitleLang = group.getTrackFormat(t).language.orEmpty()
             }
             player.trackSelectionParameters = builder.build()
         }
@@ -299,6 +305,7 @@ object PlayerHub {
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
             .clearOverrides()
             .setMaxVideoSize(Int.MAX_VALUE, Int.MAX_VALUE)
+            .setPreferredTextLanguage(null)
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
             .build()
         job = scope.launch {
@@ -367,6 +374,20 @@ object PlayerHub {
         val source: MediaSource
         if (m.hls != null) {
             source = HlsMediaSource.Factory(webFactory).createMediaSource(MediaItem.fromUri(m.hls))
+        } else if (m.dash != null) {
+            // Vídeo gravado: manifesto DASH montado pelo app, entregue ao player como um endereço "data:".
+            val b64 = android.util.Base64.encodeToString(m.dash.toByteArray(), android.util.Base64.NO_WRAP)
+            val item = MediaItem.Builder()
+                .setUri("data:application/dash+xml;base64,$b64")
+                .setMimeType(MimeTypes.APPLICATION_MPD)
+                .build()
+            source = DashMediaSource.Factory(webFactory).createMediaSource(item)
+            // Legenda: volta no idioma escolhido da última vez (se houver).
+            val lang = Prefs.subtitleLang
+            player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, lang.isBlank())
+                .setPreferredTextLanguage(lang.ifBlank { null })
+                .build()
         } else {
             val pf = ProgressiveMediaSource.Factory(webFactory)
             val sources = ArrayList<MediaSource>()
@@ -387,11 +408,11 @@ object PlayerHub {
             }
             source = if (sources.size == 1) sources[0] else MergingMediaSource(*sources.toTypedArray())
         }
-        if (m.hls == null) setTextDisabled(selSub < 0)
+        if (streamMode()) setTextDisabled(selSub < 0)
         player.setMediaSource(source, pos)
         player.prepare()
         player.playWhenReady = wasPlaying
-        publishStreamOptions()
+        if (streamMode()) publishStreamOptions()
     }
 
     private fun publishStreamOptions() {

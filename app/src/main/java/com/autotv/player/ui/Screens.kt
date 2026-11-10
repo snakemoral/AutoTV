@@ -224,31 +224,45 @@ fun HomeTab(vm: MainViewModel) {
 fun FollowingTab(vm: MainViewModel) {
     val channels by vm.following.collectAsState()
     val feed by vm.followingFeed.collectAsState()
+    val signedIn by vm.signedIn.collectAsState()
+    val loginCode by vm.loginCode.collectAsState()
+    val loading by vm.followingLoading.collectAsState()
+    val feedError by vm.followingError.collectAsState()
     var manage by rememberSaveable { mutableStateOf(false) }
     val ctx = LocalContext.current
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) vm.importSubscriptions(ctx.contentResolver, uri)
     }
 
-    LaunchedEffect(channels) { vm.loadFollowingFeed() }
+    LaunchedEffect(channels, signedIn) { vm.loadFollowingFeed() }
+
+    loginCode?.let { code -> LoginDialog(code.userCode, code.url, onCancel = { vm.cancelLogin() }) }
 
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { picker.launch(arrayOf("*/*")) }) { Text("Importar inscrições (.csv)") }
-            Spacer(Modifier.weight(1f))
-            if (channels.isNotEmpty()) {
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (signedIn) TextButton(onClick = { vm.signOut() }) { Text("Sair da conta") }
+            else TextButton(onClick = { vm.startLogin() }) { Text("Entrar com Google") }
+            TextButton(onClick = { picker.launch(arrayOf("*/*")) }) { Text("Importar arquivo") }
+            if (signedIn || channels.isNotEmpty()) {
                 IconButton(onClick = { vm.loadFollowingFeed(force = true) }) { Icon(Icons.Default.Refresh, "Atualizar") }
-                TextButton(onClick = { manage = !manage }) { Text(if (manage) "Concluir" else "Gerenciar") }
+            }
+            if (channels.isNotEmpty()) {
+                TextButton(onClick = { manage = !manage }) { Text(if (manage) "Concluir" else "Canais (${channels.size})") }
             }
         }
-        if (channels.isEmpty()) {
+        if (!signedIn && channels.isEmpty()) {
             Text(
-                "Você ainda não segue nenhum canal.\n\n" +
-                    "Abra um vídeo e toque em Seguir, ou importe suas inscrições: " +
-                    "em takeout.google.com exporte \"YouTube\" > \"inscrições\" e escolha o arquivo subscriptions.csv aqui.",
+                "Para ver os vídeos dos canais em que você é inscrito:\n\n" +
+                    "• Toque em \"Entrar com Google\". O app mostra um código; você digita em google.com/device " +
+                    "no navegador, onde faz a senha e a verificação em duas etapas. O app não vê sua senha.\n\n" +
+                    "• Ou toque em \"Importar arquivo\" e escolha o subscriptions.csv (ou o .zip inteiro) do Google Takeout.\n\n" +
+                    "Você também pode abrir um vídeo e tocar em Seguir.",
                 Modifier.padding(16.dp), color = MaterialTheme.colorScheme.outline
             )
-        } else if (manage) {
+        } else if (manage && channels.isNotEmpty()) {
             LazyColumn(Modifier.fillMaxSize()) {
                 itemsIndexed(channels, key = { _, c -> c.url }) { _, c ->
                     Row(Modifier.fillMaxWidth().padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -258,12 +272,41 @@ fun FollowingTab(vm: MainViewModel) {
                 }
             }
         } else {
-            if (feed.isEmpty()) {
+            if (loading && feed.isEmpty()) {
                 Text("Carregando novidades…", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.outline)
             }
+            feedError?.let { Text("Não deu para carregar: $it", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.error) }
             MediaList(vm, feed)
         }
     }
+}
+
+@Composable
+private fun LoginDialog(userCode: String, url: String, onCancel: () -> Unit) {
+    val ctx = LocalContext.current
+    AlertDialog(
+        onDismissRequest = {},
+        title = { Text("Entrar com Google") },
+        text = {
+            Column {
+                Text("1. Abra $url no navegador (neste celular ou em outro aparelho).")
+                Spacer(Modifier.width(8.dp))
+                Text("2. Digite este código:")
+                Text(userCode, Modifier.padding(vertical = 12.dp), style = MaterialTheme.typography.headlineMedium)
+                Text("3. Escolha sua conta e confirme. Esta tela fecha sozinha quando o Google autorizar.")
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val clip = ctx.getSystemService(android.content.ClipboardManager::class.java)
+                clip?.setPrimaryClip(android.content.ClipData.newPlainText("Código", userCode))
+                runCatching {
+                    ctx.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, Uri.parse(url)))
+                }
+            }) { Text("Copiar código e abrir") }
+        },
+        dismissButton = { TextButton(onClick = onCancel) { Text("Cancelar") } }
+    )
 }
 
 // ---------------------------------------------------------------- TV (listas M3U)

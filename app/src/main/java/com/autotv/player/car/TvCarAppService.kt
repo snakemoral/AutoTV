@@ -11,6 +11,10 @@ class TvCarAppService : CarAppService() {
     override fun createHostValidator(): HostValidator = HostValidator.ALLOW_ALL_HOSTS_VALIDATOR
 
     override fun onCreateSession(): Session = object : Session() {
-        override fun onCreateScreen(intent: Intent): Screen = HomeScreen(carContext)
+        override fun onCreateScreen(intent: Intent): Screen {
+            // A superfície do carro é registrada uma vez por conexão; as telas se revezam nela.
+            CarSurface.init(carContext)
+            return HomeScreen(carContext)
+        }
     }
 }

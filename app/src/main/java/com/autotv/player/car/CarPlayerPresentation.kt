@@ -53,7 +53,7 @@ class CarPlayerPresentation(
     ctx: Context,
     display: Display,
     private val onBack: () -> Unit
-) : Presentation(ctx, display) {
+) : Presentation(ctx, display), SurfaceUi {
 
     private val handler = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -80,6 +80,7 @@ class CarPlayerPresentation(
     private lateinit var audioPill: TextView
     private lateinit var subsPill: TextView
     private lateinit var brightness: BrightnessView
+    private lateinit var brightLabel: TextView
     private lateinit var settings: FrameLayout
     private lateinit var settingsList: LinearLayout
     private lateinit var settingsTabs: List<TextView>
@@ -172,20 +173,22 @@ class CarPlayerPresentation(
         super.onStop()
     }
 
-    fun release() {
+    override fun open() = show()
+
+    override fun release() {
         scope.cancel()
         try { dismiss() } catch (_: Exception) { }
     }
 
     /** Área livre (sem barras do carro por cima), em pixels da superfície. */
-    fun setInsets(left: Int, top: Int, right: Int, bottom: Int) {
+    override fun setInsets(left: Int, top: Int, right: Int, bottom: Int) {
         if (!::controlsContent.isInitialized) return
         controlsContent.setPadding(left, top, right, bottom)
         subtitles.setPadding(left, 0, right, maxOf(bottom, dp(24)))
     }
 
     /** Transforma um toque vindo do Android Auto em um toque na nossa interface. */
-    fun dispatchTap(x: Float, y: Float) {
+    override fun dispatchTap(x: Float, y: Float) {
         val t = SystemClock.uptimeMillis()
         val down = MotionEvent.obtain(t, t, MotionEvent.ACTION_DOWN, x, y, 0).apply { source = InputDevice.SOURCE_TOUCHSCREEN }
         dispatchTouchEvent(down)
@@ -220,7 +223,7 @@ class CarPlayerPresentation(
         }
         root.addView(subtitles, FrameLayout.LayoutParams(-1, -1))
 
-        dim = View(context).apply { setBackgroundColor(Color.BLACK) }
+        dim = View(context).apply { visibility = View.GONE }
         root.addView(dim, FrameLayout.LayoutParams(-1, -1))
 
         statusOverlay = TextView(context).apply {
@@ -375,10 +378,11 @@ class CarPlayerPresentation(
         brightness = BrightnessView(context).apply {
             onLevelChanged = { kick(); applyBrightness(it) }
         }
-        col.addView(small("☀") { }, LinearLayout.LayoutParams(dp(52), dp(36)))
-        col.addView(small("+") { stepBrightness(+0.1f) }, LinearLayout.LayoutParams(dp(52), dp(40)))
+        brightLabel = small("☀") { }.apply { setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f) }
+        col.addView(brightLabel, LinearLayout.LayoutParams(dp(52), dp(36)))
+        col.addView(small("+") { stepBrightness(+0.15f) }, LinearLayout.LayoutParams(dp(52), dp(44)))
         col.addView(brightness, LinearLayout.LayoutParams(dp(52), 0, 1f))
-        col.addView(small("−") { stepBrightness(-0.1f) }, LinearLayout.LayoutParams(dp(52), dp(40)))
+        col.addView(small("−") { stepBrightness(-0.15f) }, LinearLayout.LayoutParams(dp(52), dp(44)))
         controlsContent.addView(col, FrameLayout.LayoutParams(dp(60), -1, Gravity.END).apply {
             topMargin = dp(96); bottomMargin = dp(120); rightMargin = dp(10)
         })
@@ -391,7 +395,19 @@ class CarPlayerPresentation(
 
     private fun applyBrightness(level: Float = brightness.level) {
         Prefs.brightness = level
-        dim.alpha = 1f - level
+        // Escurece o vídeo com uma camada preta por cima (quanto menor o brilho, mais opaca).
+        val a = ((1f - level) * 255).roundToInt().coerceIn(0, 255)
+        dim.setBackgroundColor(Color.argb(a, 0, 0, 0))
+        dim.visibility = if (a == 0) View.GONE else View.VISIBLE
+        brightLabel.text = "☀ ${(level * 100).roundToInt()}"
+    }
+
+    /** No carro o dedo arrastado chega como "rolagem": arrastar para cima/baixo ajusta o brilho. */
+    override fun onScroll(distanceX: Float, distanceY: Float) {
+        if (settingsOpen || !::brightness.isInitialized) return
+        if (kotlin.math.abs(distanceY) < kotlin.math.abs(distanceX)) return
+        showControls()
+        stepBrightness(distanceY / root.height.coerceAtLeast(1) * 1.3f)
     }
 
     // ---- painel de ajustes ----

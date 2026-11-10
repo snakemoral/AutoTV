@@ -3,6 +3,7 @@ package com.autotv.player.car
 import androidx.car.app.CarContext
 import androidx.car.app.Screen
 import androidx.lifecycle.lifecycleScope
+import com.autotv.player.data.Account
 import com.autotv.player.data.Playlist
 import com.autotv.player.data.Store
 import com.autotv.player.data.YouTube
@@ -33,25 +34,23 @@ class HomeScreen(ctx: CarContext) : PagedScreen(ctx, "AutoTV", isRoot = true, en
         list += Entry("Tocando agora", now.title, now.thumb) { it.screenManager.push(PlayerScreen(it.carContext)) }
     }
     list += Entry("YouTube", "Início com vídeos em alta e ao vivo") { s ->
-        s.screenManager.push(VideoGridScreen(s.carContext, "YouTube") { YouTube.homeFeed() })
+        s.screenManager.push(videoList(s.carContext, "YouTube") { YouTube.homeFeed() })
     }
     list += Entry("Ao vivo agora", "YouTube") { s ->
-        s.screenManager.push(VideoGridScreen(s.carContext, "Ao vivo agora") {
+        s.screenManager.push(videoList(s.carContext, "Ao vivo agora") {
             withContext(Dispatchers.IO) { YouTube.kiosk("live") }
         })
     }
-    list += Entry("Seguindo", "Novidades dos canais que você segue") { s ->
-        s.screenManager.push(VideoGridScreen(s.carContext, "Seguindo") {
-            val channels = Store.following.value
-            if (channels.isEmpty()) error("Você ainda não segue canais. Use o app no celular.")
-            withContext(Dispatchers.IO) { YouTube.followingFeed(channels) }
+    list += Entry("Seguindo", "Novidades dos canais em que você é inscrito") { s ->
+        s.screenManager.push(videoList(s.carContext, "Seguindo") {
+            withContext(Dispatchers.IO) { Account.followingItems() }
         })
     }
     list += Entry("Buscar no YouTube", "Digite no carro") { it.screenManager.push(YouTubeSearchScreen(it.carContext)) }
     val history = Store.history.value
     if (history.isNotEmpty()) {
         list += Entry("Histórico", "${history.size} vídeos") { s ->
-            s.screenManager.push(PagedScreen(s.carContext, "Histórico") { itemEntries(Store.history.value) })
+            s.screenManager.push(videoList(s.carContext, "Histórico") { Store.history.value })
         }
     }
     val favs = Store.favorites.value
