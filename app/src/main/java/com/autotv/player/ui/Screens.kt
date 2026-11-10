@@ -99,7 +99,7 @@ fun AppRoot(vm: MainViewModel) {
     }
     LaunchedEffect(now) { if (now == null) fullscreen = false }
     val web = browser.value
-    val webFullscreen = tab == 4 && web != null && (web.fill || web.siteFullscreen != null)
+    val webFullscreen = tab == 4 && web != null && web.siteFullscreen != null
     FullscreenEffect((fullscreen && now != null) || webFullscreen)
     if (webFullscreen && web != null) {
         BrowserFullscreen(web)

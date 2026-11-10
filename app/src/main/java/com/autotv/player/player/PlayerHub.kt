@@ -110,7 +110,9 @@ object PlayerHub {
                 .setConnectTimeoutMs(15_000)
                 .setReadTimeoutMs(20_000)
         )
-        player = ExoPlayer.Builder(app)
+        // Se o decodificador principal (por hardware) falhar, tenta os outros do aparelho.
+        val renderers = androidx.media3.exoplayer.DefaultRenderersFactory(app).setEnableDecoderFallback(true)
+        player = ExoPlayer.Builder(app, renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(iptvFactory))
             .setWakeMode(C.WAKE_MODE_NETWORK)
             // Pede o "foco de áudio": outros apps (Spotify etc.) pausam quando o AutoTV toca, e vice-versa.
@@ -532,14 +534,17 @@ object PlayerHub {
                 if (g.isTrackSelected(i)) selectedKey = key
             }
         }
-        if (keys.isEmpty()) keys += unsupported
+        // Mostra todas as qualidades que o vídeo tem; as que o aparelho diz não decodificar vêm marcadas.
+        val all = sortedSetOf<Int>().apply { addAll(keys); addAll(unsupported) }
         qualityOptions.value =
-            if (keys.isEmpty()) emptyList()
+            if (all.isEmpty()) emptyList()
             else listOf(Option("auto", "Automático", !hasVideoOverride)) +
-                keys.reversed().map { key ->
+                all.reversed().map { key ->
                     val h = key / 2
                     val fast = key % 2 == 1
-                    Option("h:$h:${if (fast) 60 else 0}", if (fast) "${h}p60" else "${h}p", hasVideoOverride && key == selectedKey)
+                    val name = if (fast) "${h}p60" else "${h}p"
+                    val label = if (key in keys || keys.isEmpty()) name else "$name (pode travar neste aparelho)"
+                    Option("h:$h:${if (fast) 60 else 0}", label, hasVideoOverride && key == selectedKey)
                 }
 
         // Áudio

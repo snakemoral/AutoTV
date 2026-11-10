@@ -31,6 +31,27 @@ object Prefs {
         get() = sp.getString("browser_url", null) ?: Browser.HOME
         set(v) { sp.edit().putString("browser_url", v).apply() }
 
+    /** Favoritos do navegador: pares (título, endereço). */
+    var bookmarks: List<Pair<String, String>>
+        get() = runCatching {
+            val arr = org.json.JSONArray(sp.getString("bookmarks", "[]"))
+            (0 until arr.length()).map { arr.getJSONObject(it).let { o -> o.getString("t") to o.getString("u") } }
+        }.getOrDefault(emptyList())
+        set(v) {
+            val arr = org.json.JSONArray()
+            v.forEach { (t, u) -> arr.put(org.json.JSONObject().put("t", t).put("u", u)) }
+            sp.edit().putString("bookmarks", arr.toString()).apply()
+        }
+
+    fun isBookmarked(url: String) = bookmarks.any { it.second == url }
+
+    /** Adiciona ou remove a página dos favoritos; devolve true se ficou salva. */
+    fun toggleBookmark(title: String, url: String): Boolean {
+        val list = bookmarks
+        return if (list.any { it.second == url }) { bookmarks = list.filter { it.second != url }; false }
+        else { bookmarks = list + (title.ifBlank { url } to url); true }
+    }
+
     /** Idioma de legenda preferido ("" = desligada). */
     var subtitleLang: String
         get() = sp.getString("sub_lang", "") ?: ""

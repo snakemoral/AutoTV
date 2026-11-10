@@ -302,14 +302,10 @@ object YouTube {
             (c.startsWith("av01") && c.split('.').getOrNull(3) == "10")
         val sdr = vids.filter { !isHdr(it.codec) }.ifEmpty { vids }
         val order = listOf("avc1", "vp9", "vp09", "av01")
-        var families = sdr.groupBy { it.codec.substringBefore('.') }.toList()
+        // Ordem: H.264 e VP9 (com aceleração em quase todo aparelho) antes do AV1. Para uma mesma
+        // qualidade o player usa o primeiro codec da ordem que o aparelho suporta.
+        val families = sdr.groupBy { it.codec.substringBefore('.') }.toList()
             .sortedBy { (name, _) -> order.indexOf(name).let { if (it < 0) order.size else it } }
-        // AV1 costuma ser decodificado sem aceleração (trava): só entra se for o único com a resolução máxima.
-        val others = families.filter { it.first != "av01" }
-        if (others.isNotEmpty()) {
-            val av1Top = families.firstOrNull { it.first == "av01" }?.second?.maxOf { it.height } ?: 0
-            if (av1Top <= others.maxOf { f -> f.second.maxOf { it.height } }) families = others
-        }
 
         val sb = StringBuilder()
         sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>")

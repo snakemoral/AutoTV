@@ -137,8 +137,12 @@ class MainViewModel : ViewModel() {
         homeSection.value = section
         if (section == HomeSection.HISTORY) return
         if (!force && feed.value?.first == section) return
-        val kiosk = if (section == HomeSection.LIVE) "Live" else "Trending"
-        task({ YouTube.kiosk(kiosk) }) { feed.value = section to it }
+        // O YouTube acabou com a página "Em alta" antiga: aqui ela é a mistura das categorias em alta
+        // (música, jogos, filmes, ao vivo), a mesma lista que o carro mostra em "YouTube".
+        if (section == HomeSection.LIVE) task({ YouTube.kiosk("live") }) { feed.value = section to it }
+        else task({
+            YouTube.homeFeed().ifEmpty { error("O YouTube não devolveu vídeos em alta agora. Tente de novo.") }
+        }) { feed.value = section to it }
     }
 
     /** Link compartilhado a partir do app do YouTube. */

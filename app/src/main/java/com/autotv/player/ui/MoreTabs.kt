@@ -19,6 +19,11 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -87,16 +92,12 @@ class BrowserState(val web: WebView) {
     var url by mutableStateOf("")
     var canGoBack by mutableStateOf(false)
     var progress by mutableStateOf(100)
-    /** Tela cheia: só a página aparece, deitada, sem as barras do app. */
-    var fill by mutableStateOf(false)
+    var canGoForward by mutableStateOf(false)
+    var bookmarked by mutableStateOf(false)
     /** Tela cheia pedida pelo próprio site (botão do player da página). */
     var siteFullscreen by mutableStateOf<View?>(null)
     var exitSiteFullscreen: (() -> Unit)? = null
 
-    fun setFillMode(on: Boolean) {
-        fill = on
-        web.evaluateJavascript(Browser.jsFill(on), null)
-    }
 }
 
 private fun createBrowser(context: android.content.Context): BrowserState {
@@ -115,6 +116,8 @@ private fun createBrowser(context: android.content.Context): BrowserState {
         override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
             state.url = url.orEmpty()
             state.canGoBack = view.canGoBack()
+            state.canGoForward = view.canGoForward()
+            state.bookmarked = Prefs.isBookmarked(state.url)
             if (!url.isNullOrBlank()) Prefs.browserUrl = url
         }
     }
@@ -146,11 +149,42 @@ fun BrowserTab(holder: MutableState<BrowserState?>) {
     var editing by remember { mutableStateOf(false) }
     if (!editing) address = state.url
 
+    var showBookmarks by remember { mutableStateOf(false) }
+
     BackHandler(enabled = state.canGoBack) { state.web.goBack() }
+
+    if (showBookmarks) {
+        var list by remember { mutableStateOf(Prefs.bookmarks) }
+        AlertDialog(
+            onDismissRequest = { showBookmarks = false },
+            title = { Text("Favoritos") },
+            text = {
+                if (list.isEmpty()) Text("Nenhuma página salva. Abra um site e toque em \"Salvar página\".")
+                else LazyColumn {
+                    items(list.size) { i ->
+                        val (title, url) = list[i]
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f).clickable { showBookmarks = false; state.web.loadUrl(url) }.padding(vertical = 8.dp)) {
+                                Text(title, maxLines = 1)
+                                Text(url, maxLines = 1, color = MaterialTheme.colorScheme.outline, style = MaterialTheme.typography.bodySmall)
+                            }
+                            IconButton(onClick = {
+                                Prefs.bookmarks = list.filter { it.second != url }
+                                list = Prefs.bookmarks
+                                state.bookmarked = Prefs.isBookmarked(state.url)
+                            }) { Icon(Icons.Default.Delete, "Remover") }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showBookmarks = false }) { Text("Fechar") } }
+        )
+    }
 
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { state.web.goBack() }, enabled = state.canGoBack) { Icon(Icons.Default.ArrowBack, "Voltar") }
+            IconButton(onClick = { state.web.goBack() }, enabled = state.canGoBack) { Icon(Icons.Default.ArrowBack, "Página anterior") }
+            IconButton(onClick = { state.web.goForward() }, enabled = state.canGoForward) { Icon(Icons.Default.ArrowForward, "Página seguinte") }
             OutlinedTextField(
                 value = address,
                 onValueChange = { address = it; editing = true },
@@ -166,10 +200,12 @@ fun BrowserTab(holder: MutableState<BrowserState?>) {
             )
             IconButton(onClick = { state.web.reload() }) { Icon(Icons.Default.Refresh, "Recarregar") }
         }
-        // Controles para vídeos de sites que não mostram os próprios botões.
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { state.web.evaluateJavascript(Browser.JS_TOGGLE_PLAY, null) }) { Text("⏯  Pausar / tocar") }
-            TextButton(onClick = { state.setFillMode(true) }) { Text("⛶  Tela cheia") }
+            TextButton(onClick = {
+                state.bookmarked = Prefs.toggleBookmark(state.web.title.orEmpty(), state.url)
+            }) { Text(if (state.bookmarked) "★ Salvo" else "☆ Salvar página") }
+            TextButton(onClick = { showBookmarks = true }) { Text("Favoritos") }
+            TextButton(onClick = { state.web.loadUrl(Browser.HOME) }) { Text("Início") }
         }
         if (state.progress < 100) LinearProgressIndicator(progress = { state.progress / 100f }, modifier = Modifier.fillMaxWidth())
         AndroidView(
@@ -182,15 +218,13 @@ fun BrowserTab(holder: MutableState<BrowserState?>) {
     }
 }
 
-/** Navegador em tela cheia: só a página (ou o vídeo que o site pôs em tela cheia) e dois botões discretos. */
+/** O site pôs um vídeo em tela cheia: mostra só ele, deitado; o botão voltar sai. */
 @Composable
 fun BrowserFullscreen(state: BrowserState) {
-    val site = state.siteFullscreen
-    BackHandler {
-        if (site != null) state.exitSiteFullscreen?.invoke() else state.setFillMode(false)
-    }
+    val site = state.siteFullscreen ?: return
+    BackHandler { state.exitSiteFullscreen?.invoke() }
     androidx.compose.foundation.layout.Box(Modifier.fillMaxSize()) {
-        // A página fica sempre por baixo (se sair da tela, o site pode parar o vídeo).
+        // A página fica por baixo (se sair da tela, o site pode parar o vídeo).
         AndroidView(
             factory = {
                 (state.web.parent as? ViewGroup)?.removeView(state.web)
@@ -198,21 +232,14 @@ fun BrowserFullscreen(state: BrowserState) {
             },
             modifier = Modifier.fillMaxSize()
         )
-        if (site != null) {
-            androidx.compose.runtime.key(site) {
-                AndroidView(
-                    factory = {
-                        (site.parent as? ViewGroup)?.removeView(site)
-                        site
-                    },
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-        } else {
-            Row(Modifier.align(Alignment.TopEnd).padding(8.dp)) {
-                TextButton(onClick = { state.web.evaluateJavascript(Browser.JS_TOGGLE_PLAY, null) }) { Text("⏯") }
-                TextButton(onClick = { state.setFillMode(false) }) { Text("✕ Sair") }
-            }
+        androidx.compose.runtime.key(site) {
+            AndroidView(
+                factory = {
+                    (site.parent as? ViewGroup)?.removeView(site)
+                    site
+                },
+                modifier = Modifier.fillMaxSize()
+            )
         }
     }
 }
