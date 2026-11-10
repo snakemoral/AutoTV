@@ -71,6 +71,7 @@ fun PlayerSurface(
 ) {
     val carActive by PlayerHub.carActive.collectAsState()
     val status by PlayerHub.status.collectAsState()
+    val loading by PlayerHub.loading.collectAsState()
     val qOpts by PlayerHub.qualityOptions.collectAsState()
     val aOpts by PlayerHub.audioOptions.collectAsState()
     val sOpts by PlayerHub.subtitleOptions.collectAsState()
@@ -106,6 +107,12 @@ fun PlayerSurface(
             }
         }
 
+        if (loading) {
+            androidx.compose.material3.CircularProgressIndicator(
+                color = Color.White,
+                modifier = Modifier.align(Alignment.Center).padding(bottom = 96.dp)
+            )
+        }
         status?.let {
             Text(
                 it, color = Color.White,

@@ -329,7 +329,11 @@ object YouTube {
             val name = first.audioTrackName?.takeIf { it.isNotBlank() }
                 ?: first.audioLocale?.getDisplayLanguage(ptBr)?.replaceFirstChar { it.uppercase() }
                 ?: "Padrão"
-            val label = if (original && !name.contains("original", true)) "$name (original)" else name
+            val label = when {
+                original && !name.contains("original", true) -> "$name (original)"
+                first.audioTrackType?.name == "DESCRIPTIVE" && !name.contains("descri", true) -> "$name (audiodescrição)"
+                else -> name
+            }
             sb.append("<AdaptationSet id=\"${setId++}\" contentType=\"audio\" mimeType=\"${first.format!!.mimeType}\" subsegmentAlignment=\"true\"")
             first.audioLocale?.toLanguageTag()?.takeIf { it.isNotBlank() && it != "und" }?.let { sb.append(" lang=\"${esc(it)}\"") }
             sb.append("><Label>${esc(label)}</Label>")

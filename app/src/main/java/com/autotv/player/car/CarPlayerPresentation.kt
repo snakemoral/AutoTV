@@ -71,6 +71,7 @@ class CarPlayerPresentation(
     private lateinit var channelView: TextView
     private lateinit var statusOverlay: TextView
     private lateinit var playBtn: ImageView
+    private lateinit var spinner: android.widget.ProgressBar
     private lateinit var prevBtn: ImageView
     private lateinit var nextBtn: ImageView
     private lateinit var seek: SeekView
@@ -140,6 +141,7 @@ class CarPlayerPresentation(
             playBtn.setImageResource(if (it) R.drawable.ic_pause else R.drawable.ic_play)
             if (!it) showControls()
         } }
+        jobs += scope.launch { PlayerHub.loading.collect { spinner.visibility = if (it) View.VISIBLE else View.GONE } }
         jobs += scope.launch {
             combine(PlayerHub.qualityOptions, PlayerHub.audioOptions, PlayerHub.subtitleOptions) { q, a, s -> Triple(q, a, s) }
                 .collect { (q, a, s) ->
@@ -326,7 +328,18 @@ class CarPlayerPresentation(
         playBtn = iconButton(R.drawable.ic_play, 88) { PlayerHub.togglePause() }
         val fwd10 = textButton("+10", 64) { PlayerHub.seekBy(10_000) }
         nextBtn = iconButton(R.drawable.ic_next, 64) { PlayerHub.next() }
-        listOf(prevBtn, back10, playBtn, fwd10, nextBtn).forEach { row.addView(it) }
+        // Rodinha em volta do botão central enquanto o vídeo carrega.
+        spinner = android.widget.ProgressBar(context).apply {
+            isIndeterminate = true
+            indeterminateTintList = android.content.res.ColorStateList.valueOf(Color.WHITE)
+            visibility = View.GONE
+        }
+        val center = FrameLayout(context).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(116), dp(116)).apply { setMargins(dp(4), 0, dp(4), 0) }
+        }
+        center.addView(spinner, FrameLayout.LayoutParams(dp(116), dp(116), Gravity.CENTER))
+        center.addView(playBtn, FrameLayout.LayoutParams(dp(88), dp(88), Gravity.CENTER))
+        listOf(prevBtn, back10, center, fwd10, nextBtn).forEach { row.addView(it) }
         controlsContent.addView(row, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
     }
 

@@ -84,7 +84,8 @@ fun AutoTvTheme(content: @Composable () -> Unit) {
 
 @Composable
 fun AppRoot(vm: MainViewModel) {
-    var tab by rememberSaveable { mutableIntStateOf(0) }
+    // Abre direto em "Seguindo".
+    var tab by rememberSaveable { mutableIntStateOf(1) }
     var fullscreen by rememberSaveable { mutableStateOf(false) }
     val now by PlayerHub.nowPlaying.collectAsState()
     val busy by vm.busy.collectAsState()

@@ -15,5 +15,14 @@ class AutoTvApp : Application() {
         com.autotv.player.data.Account.init(this)
         YouTube.init(Http.client)
         PlayerHub.init(this)
+        // Segunda garantia: ao sair do Android Auto, pausa.
+        var wasInCar = false
+        runCatching {
+            androidx.car.app.connection.CarConnection(this).type.observeForever { type ->
+                val inCar = type == androidx.car.app.connection.CarConnection.CONNECTION_TYPE_PROJECTION
+                if (wasInCar && !inCar) PlayerHub.pause()
+                wasInCar = inCar
+            }
+        }
     }
 }

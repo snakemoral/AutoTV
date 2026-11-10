@@ -3,7 +3,10 @@
 package com.autotv.player.player
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
 import android.net.Uri
+import androidx.media3.common.AudioAttributes
 import android.view.Surface
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -67,6 +70,11 @@ object PlayerHub {
     /** true enquanto o vídeo está sendo desenhado na tela do carro. */
     val carActive = MutableStateFlow(false)
     val isLive = MutableStateFlow(false)
+    /** true enquanto o vídeo está sendo buscado ou carregando (para mostrar a rodinha). */
+    val loading = MutableStateFlow(false)
+    private var failed = false
+    private var netJob: Job? = null
+    private var lastNetwork: Network? = null
 
     val qualityOptions = MutableStateFlow<List<Option>>(emptyList())
     val audioOptions = MutableStateFlow<List<Option>>(emptyList())
@@ -105,7 +113,14 @@ object PlayerHub {
         player = ExoPlayer.Builder(app)
             .setMediaSourceFactory(DefaultMediaSourceFactory(iptvFactory))
             .setWakeMode(C.WAKE_MODE_NETWORK)
+            // Pede o "foco de áudio": outros apps (Spotify etc.) pausam quando o AutoTV toca, e vice-versa.
+            .setAudioAttributes(
+                AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MOVIE).build(),
+                true
+            )
+            .setHandleAudioBecomingNoisy(true)
             .build()
+        watchNetwork(app)
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 this@PlayerHub.isPlaying.value = isPlaying
@@ -113,9 +128,12 @@ object PlayerHub {
 
             override fun onPlaybackStateChanged(state: Int) {
                 when (state) {
-                    Player.STATE_BUFFERING -> status.value = "Carregando…"
-                    Player.STATE_READY -> { status.value = null; retries = 0 }
-                    Player.STATE_ENDED -> if (nowPlaying.value?.kind == Kind.YOUTUBE && !isLive.value) next()
+                    Player.STATE_BUFFERING -> { status.value = "Carregando…"; loading.value = true }
+                    Player.STATE_READY -> { status.value = null; retries = 0; failed = false; loading.value = false }
+                    Player.STATE_ENDED -> {
+                        loading.value = false
+                        if (nowPlaying.value?.kind == Kind.YOUTUBE && !isLive.value) next()
+                    }
                     else -> Unit
                 }
             }
@@ -132,19 +150,67 @@ object PlayerHub {
                     item?.kind == Kind.STREAM && retries < 3 -> {
                         retries++
                         status.value = "Reconectando ($retries/3)…"
+                        loading.value = true
                         scope.launch { delay(2_000); player.prepare() }
                     }
                     item?.kind == Kind.YOUTUBE && retries < 2 -> {
                         // O link do stream pode ter expirado: resolve de novo e continua de onde parou.
                         retries++
                         status.value = "Reconectando ($retries/2)…"
+                        loading.value = true
                         resumeYoutube(item, player.currentPosition)
                     }
-                    else -> status.value = "Erro: ${error.errorCodeName}"
+                    else -> fail("Erro: ${error.errorCodeName}")
                 }
             }
         })
     }
+
+    private fun fail(message: String) {
+        status.value = message
+        loading.value = false
+        failed = true
+    }
+
+    /** Ao trocar de rede (Wi-Fi <-> dados móveis) ou a internet voltar, recarrega e continua de onde parou. */
+    private fun watchNetwork(app: Context) {
+        val cm = app.getSystemService(ConnectivityManager::class.java) ?: return
+        runCatching {
+            cm.registerDefaultNetworkCallback(object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    scope.launch {
+                        val changed = lastNetwork != null && lastNetwork != network
+                        lastNetwork = network
+                        if (changed || failed) reloadAfterNetworkChange()
+                    }
+                }
+            })
+        }
+    }
+
+    private fun reloadAfterNetworkChange() {
+        val item = nowPlaying.value ?: return
+        // Pausado pelo usuário: não mexe (se o link vencer, o player reconecta sozinho ao dar play).
+        if (!player.playWhenReady && !failed) return
+        netJob?.cancel()
+        netJob = scope.launch {
+            delay(1_500) // dá tempo de a rede nova estabilizar
+            retries = 0
+            failed = false
+            status.value = "Reconectando…"
+            loading.value = true
+            val pos = player.currentPosition
+            if (item.kind == Kind.YOUTUBE) {
+                // Os links do YouTube valem só para a rede em que foram gerados: busca de novo.
+                resumeYoutube(item, pos)
+            } else {
+                player.prepare()
+                player.playWhenReady = true
+            }
+        }
+    }
+
+    fun pause() { player.pause() }
 
     fun play(items: List<Item>, startIndex: Int) {
         if (startIndex !in items.indices) return
@@ -164,9 +230,12 @@ object PlayerHub {
 
     fun stop() {
         job?.cancel()
+        netJob?.cancel()
         player.stop()
         nowPlaying.value = null
         status.value = null
+        loading.value = false
+        failed = false
         yt = null
         clearOptions()
     }
@@ -294,10 +363,13 @@ object PlayerHub {
     private fun start() {
         val item = queue.getOrNull(index) ?: return
         job?.cancel()
+        netJob?.cancel()
         retries = 0
+        failed = false
         nowPlaying.value = item
         if (item.kind == Kind.YOUTUBE) Store.addHistory(item)
         status.value = "Carregando…"
+        loading.value = true
         yt = null
         isLive.value = false
         clearOptions()
@@ -328,7 +400,7 @@ object PlayerHub {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                status.value = "Erro: ${e.message ?: e.javaClass.simpleName}"
+                fail("Erro: ${e.message ?: e.javaClass.simpleName}")
             }
         }
     }
@@ -361,7 +433,7 @@ object PlayerHub {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                status.value = "Erro: ${e.message ?: e.javaClass.simpleName}"
+                fail("Erro: ${e.message ?: e.javaClass.simpleName}")
             }
         }
     }
@@ -464,7 +536,9 @@ object PlayerHub {
                 audio += Option("a:$gi:$i", label, g.isTrackSelected(i))
             }
         }
-        audioOptions.value = if (audio.size > 1) audio else emptyList()
+        // O mesmo idioma pode vir repetido (uma cópia por taxa de bits): mostra um só, o que está em uso.
+        val unique = audio.groupBy { it.label }.map { (_, same) -> same.firstOrNull { it.selected } ?: same.first() }
+        audioOptions.value = if (unique.size > 1) unique else emptyList()
 
         // Legendas
         val textDisabled = params.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
