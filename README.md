@@ -57,7 +57,17 @@ pode fazer uma doação de qualquer valor por Pix (chave aleatória):
 5644f99c-8b48-4aab-991f-963997ef2384
 ```
 
-No app do seu banco: Pix > Pagar com chave > cole a chave acima. Obrigado!
+No app do seu banco: Pix > Pagar com chave > cole a chave acima. Ou leia o QR Code:
+
+<img src="docs/pix-qr.png" alt="QR Code do Pix" width="220">
+
+Pix copia e cola:
+
+```
+00020126580014br.gov.bcb.pix01365644f99c-8b48-4aab-991f-963997ef23845204000053039865802BR5906AUTOTV6006BRASIL62070503***63046A41
+```
+
+Obrigado!
 
 ## Uso responsável
 Vídeo e navegador só com o carro parado. Com o carro em movimento use somente o áudio.
