@@ -1,35 +1,50 @@
-# AutoTV (v0.3.0)
+# AutoTV (v0.5.0)
 
-Player de TV (listas M3U/IPTV) e YouTube para Android, com tela para o Android Auto.
+Player de YouTube, TV por lista (IPTV/M3U), vídeos do celular e navegador de internet para Android,
+com tela própria no Android Auto.
 
-> **Status:** o código NUNCA foi compilado nem testado em aparelho (o ambiente onde foi escrito não tem o
-> Android SDK). Só o parser de M3U foi testado. Espere corrigir erros de compilação e ajustes no carro.
+**Baixar o APK:** [versão mais recente](https://github.com/snakemoral/AutoTV/releases/tag/latest)
+(arquivo `AutoTV-debug.apk`, gerado automaticamente a cada mudança no código).
+
+> **Status:** projeto pessoal em desenvolvimento. Testado pelo autor em um Xiaomi 12 Lite (Android 14)
+> com Android Auto. As versões saem sem bateria de testes; espere falhas, principalmente no carro.
 
 ## O que tem
-**Celular**: abas Início (Em alta / Ao vivo / Histórico, miniaturas, busca, link colado ou compartilhado),
-Seguindo (canais do YouTube + importar `subscriptions.csv` do Google Takeout), TV (listas M3U) e Biblioteca
-(favoritos). Player próprio: barra de progresso, ao vivo, qualidade, idioma do áudio, legendas (manuais e
-automáticas), tela cheia, barra de brilho lateral. O título some junto com os controles.
 
-**Carro (Android Auto)**: Início do YouTube em grade com miniaturas, Ao vivo, Seguindo, busca, histórico,
-favoritos e listas. Player desenhado numa tela virtual (VirtualDisplay) com botões, barra de progresso,
-±10 s, brilho (+/−), qualidade, áudio e legendas. Em Biblioteca há um interruptor "Interface avançada no
-carro": se a tela do carro ficar preta, desligue para usar o modo simples.
+**No celular**
+- **Início:** Em alta (com categorias e botão de atualizar), Ao vivo, Histórico, busca e link colado ou
+  compartilhado do YouTube.
+- **Seguindo:** vídeos dos canais em que você é inscrito, pela conta Google ou por arquivo do Google Takeout.
+- **TV:** listas M3U/IPTV.
+- **Baixados:** vídeos guardados no celular (Download, Filmes, Câmera etc.).
+- **Web:** navegador com voltar, avançar, recarregar e favoritos.
+- **Favoritos:** itens salvos e o interruptor "Interface avançada no carro".
+- **Player:** qualidade automática ou manual (até 4K/60 fps, conforme o vídeo e o aparelho), idioma do
+  áudio, legendas manuais e automáticas, brilho, tela cheia, indicador e retorno ao vivo.
 
-**Conta Google:** em Seguindo > "Entrar com Google" o app mostra um código para digitar em
-google.com/device (o mesmo método das TVs). A senha e a verificação em duas etapas ficam no navegador;
-o app guarda só uma chave do YouTube, cifrada, que pode ser revogada em myaccount.google.com/permissions.
-Sem login, dá para importar o `subscriptions.csv` (ou o .zip) do Google Takeout.
+**No carro (Android Auto)**
+- Tela inicial com abas: Em alta, Seguindo, Ao vivo, Histórico, Celular, TV, Web, Favoritos e Buscar.
+- Listas de vídeo com miniaturas grandes, filtros e botão de atualizar.
+- Player desenhado pelo app: botões na tela, barra de progresso, ±10 s, brilho, qualidade, áudio e legendas.
+- Navegador de internet, com digitação pelo teclado do Android Auto.
+- Se a tela do carro ficar preta, desligue "Interface avançada no carro" (aba Favoritos do celular)
+  para usar o modo simples.
 
-## Gerar o APK (GitHub)
-1. Envie esta pasta para o repositório (`git add -A`, `git commit`, `git push`). O arquivo
-   `.github/workflows/build.yml` gera o APK na aba **Actions** (artefato `AutoTV-debug-apk`).
-2. O APK agora é assinado com uma chave fixa (`app/debug.keystore`): novas versões instalam POR CIMA
-   da anterior. **Só desta vez**, desinstale a versão antiga antes (a assinatura mudou).
+**Conta Google**
+Em Seguindo > "Entrar com Google" o app mostra um código para digitar em google.com/device (o mesmo
+método das TVs). A senha e a verificação em duas etapas ficam no navegador; o app guarda só uma chave do
+YouTube, cifrada, que pode ser revogada em myaccount.google.com/permissions. Sem login, dá para importar
+o `subscriptions.csv` (ou o .zip) do Google Takeout.
 
-## Android Auto
-Veja as configurações: modo desenvolvedor (10 toques em "Versão"), **Fontes desconhecidas** ligado e o app
-precisa aparecer em "Personalizar tela de início". Se não aparecer, instale com KingInstaller + Shizuku.
+## Instalar
+1. Baixe o `AutoTV-debug.apk` no link acima e instale. Versões novas instalam por cima da anterior.
+2. Para aparecer no Android Auto: ative o modo desenvolvedor do Android Auto (10 toques em "Versão"),
+   ligue **Fontes desconhecidas** e confira "Personalizar tela de início". Se o app não aparecer,
+   instale com KingInstaller + Shizuku.
+
+## Compilar
+Cada push na branch `main` compila o APK pelo GitHub Actions (`.github/workflows/build.yml`) e atualiza
+a Release `latest`. O APK é assinado com a chave de depuração fixa do repositório (`app/debug.keystore`).
 
 ## Se o YouTube parar
 Atualize `NewPipeExtractor` em `app/build.gradle.kts` (releases em github.com/TeamNewPipe/NewPipeExtractor).
@@ -45,5 +60,6 @@ pode fazer uma doação de qualquer valor por Pix (chave aleatória):
 No app do seu banco: Pix > Pagar com chave > cole a chave acima. Obrigado!
 
 ## Uso responsável
-Vídeo só com o carro parado. Com o carro em movimento use somente o áudio (volte para a lista).
-Extrair streams do YouTube pode violar os termos do serviço. Licença: GPL-3.0 (NewPipeExtractor).
+Vídeo e navegador só com o carro parado. Com o carro em movimento use somente o áudio.
+Extrair vídeos do YouTube e entrar na conta pelo método das TVs não são usos oficiais e podem violar os
+termos do serviço. Licença: GPL-3.0 (NewPipeExtractor).
