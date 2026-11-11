@@ -34,6 +34,16 @@ precisa aparecer em "Personalizar tela de início". Se não aparecer, instale co
 ## Se o YouTube parar
 Atualize `NewPipeExtractor` em `app/build.gradle.kts` (releases em github.com/TeamNewPipe/NewPipeExtractor).
 
+## Apoie o projeto
+O AutoTV é gratuito e de código aberto. Se ele é útil para você e quiser apoiar o desenvolvimento,
+pode fazer uma doação de qualquer valor por Pix (chave aleatória):
+
+```
+5644f99c-8b48-4aab-991f-963997ef2384
+```
+
+No app do seu banco: Pix > Pagar com chave > cole a chave acima. Obrigado!
+
 ## Uso responsável
 Vídeo só com o carro parado. Com o carro em movimento use somente o áudio (volte para a lista).
 Extrair streams do YouTube pode violar os termos do serviço. Licença: GPL-3.0 (NewPipeExtractor).
