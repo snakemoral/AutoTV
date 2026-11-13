@@ -48,8 +48,13 @@ jobs:
               mkdir -p prev
               gh release download latest --pattern AutoTV-debug.apk --dir prev
               mv prev/AutoTV-debug.apk "prev/AutoTV-$PREV.apk"
+              # The token may be refused a tag on an older commit (when the workflow file changed since):
+              # fall back to tagging the current commit; a failure here never blocks the new release.
               gh release create "v$PREV" "prev/AutoTV-$PREV.apk" --title "AutoTV $PREV" \
-                --notes "Versão $PREV (commit ${PREV_SHA::7})." --target "$PREV_SHA" --latest=false
+                --notes "Versão $PREV (commit ${PREV_SHA::7})." --target "$PREV_SHA" --latest=false \
+              || gh release create "v$PREV" "prev/AutoTV-$PREV.apk" --title "AutoTV $PREV" \
+                --notes "Versão $PREV (APK gerado a partir do commit ${PREV_SHA::7})." --target "$GITHUB_SHA" --latest=false \
+              || echo "::warning::Could not archive version $PREV"
             fi
           fi
 
