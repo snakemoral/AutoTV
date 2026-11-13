@@ -1,5 +1,5 @@
 # Estado do projeto (para retomar após limite de uso)
-Última atualização: 2026-11-10 (v0.5.0).
+Última atualização: 2026-11-13 (v0.5.1).
 
 - Repositório: github.com/snakemoral/AutoTV, branch main. Cada push compila sozinho (GitHub Actions) e
   publica o APK na Release "latest". Trabalhar no clone em /home/claude/autotv-repo.
@@ -33,9 +33,16 @@
   é o botão de retorno (carro e celular; PlayerHub.liveSeekable/behindLive/seekToLive). Celular: atualizar
   e categorias em "Em alta", filtros em "Seguindo" (só quando a lista traz duração/ao vivo).
   O menu em lista antigo (HomeScreen) ficou só para o modo simples.
+- v0.5.1: continuar de onde parou. Store guarda a posição de cada vídeo (positions.json; chave = código
+  do vídeo no YouTube, Store.positionKey) e a última fila (session.json). PlayerHub.savePosition grava a
+  cada 5 s, ao pausar, ao avançar/voltar e ao trocar de vídeo; start() começa de PlayerHub.resumePosition.
+  Lives e canais de TV não guardam posição. Desconexão do carro: PlayerHub.onCarDisconnected marca
+  Prefs.resumeInCar se estava tocando; ao reconectar, TvCarAppService chama PlayerHub.resumeInCar() e abre
+  direto no PlayerScreen. README sem as seções "Compilar" e "Se o YouTube parar" (pedido do usuário;
+  a dica continua valendo: se o YouTube parar, atualizar NewPipeExtractor em app/build.gradle.kts).
 - Dúvida em aberto: o usuário não viu qualidades acima de 1080p60 na v0.4.1. Causa não confirmada (ou o
   aparelho não declara suporte, ou o extrator não devolve esses streams). Pedir o nome de um vídeo de teste.
 - Confirmado pelo usuário: tela dividida do Android Auto funciona (AutoTV no painel grande + cartão de música).
-- NÃO testado em aparelho: v0.5.0. O login e a leitura das inscrições da conta dependem de
+- NÃO testado em aparelho: v0.5.0 e v0.5.1. O login e a leitura das inscrições da conta dependem de
   respostas do YouTube que não foi possível conferir daqui.
 - Regra para quem continuar: LER o código antes de escrever; nunca sobrescrever arquivos inteiros sem ler.

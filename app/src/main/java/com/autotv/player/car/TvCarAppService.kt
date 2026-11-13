@@ -18,7 +18,7 @@ class TvCarAppService : CarAppService() {
             // Carro desconectado: pausa, para o vídeo não continuar tocando sozinho no celular.
             lifecycle.addObserver(object : androidx.lifecycle.DefaultLifecycleObserver {
                 override fun onDestroy(owner: androidx.lifecycle.LifecycleOwner) {
-                    com.autotv.player.player.PlayerHub.pause()
+                    com.autotv.player.player.PlayerHub.onCarDisconnected()
                 }
             })
         }
@@ -27,7 +27,14 @@ class TvCarAppService : CarAppService() {
             // A superfície do carro é registrada uma vez por conexão; as telas se revezam nela.
             CarSurface.init(carContext)
             // Modo avançado: tela inicial com abas, aberta em "Em alta". Modo simples: menu em lista.
-            return if (com.autotv.player.data.Prefs.carAdvancedUi) HubScreen(carContext) else HomeScreen(carContext)
+            val home = if (com.autotv.player.data.Prefs.carAdvancedUi) HubScreen(carContext) else HomeScreen(carContext)
+            // Vídeo interrompido pela desconexão: volta a tocar de onde parou e abre direto no player
+            // (a tela inicial fica atrás, para o botão de voltar).
+            if (com.autotv.player.player.PlayerHub.resumeInCar()) {
+                carContext.getCarService(ScreenManager::class.java).push(home)
+                return PlayerScreen(carContext)
+            }
+            return home
         }
     }
 }

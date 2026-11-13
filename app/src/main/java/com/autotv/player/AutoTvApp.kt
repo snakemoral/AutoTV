@@ -25,7 +25,7 @@ class AutoTvApp : Application(), coil.ImageLoaderFactory {
         runCatching {
             androidx.car.app.connection.CarConnection(this).type.observeForever { type ->
                 val inCar = type == androidx.car.app.connection.CarConnection.CONNECTION_TYPE_PROJECTION
-                if (wasInCar && !inCar) PlayerHub.pause()
+                if (wasInCar && !inCar) PlayerHub.onCarDisconnected()
                 wasInCar = inCar
             }
         }

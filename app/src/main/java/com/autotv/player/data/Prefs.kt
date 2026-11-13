@@ -52,6 +52,11 @@ object Prefs {
         else { bookmarks = list + (title.ifBlank { url } to url); true }
     }
 
+    /** true quando o vídeo foi interrompido pela desconexão do carro e deve voltar a tocar ao reconectar. */
+    var resumeInCar: Boolean
+        get() = sp.getBoolean("resume_car", false)
+        set(v) { sp.edit().putBoolean("resume_car", v).apply() }
+
     /** Idioma de legenda preferido ("" = desligada). */
     var subtitleLang: String
         get() = sp.getString("sub_lang", "") ?: ""

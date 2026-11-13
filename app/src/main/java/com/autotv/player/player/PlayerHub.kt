@@ -74,6 +74,12 @@ object PlayerHub {
     val loading = MutableStateFlow(false)
     private var failed = false
     private var netJob: Job? = null
+
+    /** true quando o player já está com o vídeo de [nowPlaying] carregado (a posição dele é confiável). */
+    private var tracking = false
+    private var saveJob: Job? = null
+    /** Momento em que o sistema pausou sozinho (saída de áudio desconectada ou outro app tomou o áudio). */
+    private var autoPausedAt = 0L
     private var lastNetwork: Network? = null
 
     val qualityOptions = MutableStateFlow<List<Option>>(emptyList())
@@ -126,6 +132,24 @@ object PlayerHub {
         player.addListener(object : Player.Listener {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 this@PlayerHub.isPlaying.value = isPlaying
+                // Enquanto toca, guarda a posição a cada poucos segundos; ao parar, guarda na hora.
+                saveJob?.cancel()
+                if (isPlaying) {
+                    saveJob = scope.launch { while (true) { delay(SAVE_EVERY_MS); savePosition() } }
+                } else savePosition()
+            }
+
+            override fun onPositionDiscontinuity(
+                oldPosition: Player.PositionInfo, newPosition: Player.PositionInfo, reason: Int
+            ) {
+                // O usuário avançou ou voltou (mesmo com o vídeo pausado): guarda a posição nova.
+                if (reason == Player.DISCONTINUITY_REASON_SEEK) savePosition()
+            }
+
+            override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                if (!playWhenReady && (reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_BECOMING_NOISY ||
+                        reason == Player.PLAY_WHEN_READY_CHANGE_REASON_AUDIO_FOCUS_LOSS)
+                ) autoPausedAt = android.os.SystemClock.elapsedRealtime()
             }
 
             override fun onPlaybackStateChanged(state: Int) {
@@ -135,6 +159,8 @@ object PlayerHub {
                     Player.STATE_ENDED -> {
                         loading.value = false
                         val ended = nowPlaying.value
+                        // Visto até o fim: da próxima vez começa do início.
+                        if (ended != null && tracking) Store.clearPosition(ended)
                         // Passa para o próximo ao terminar um vídeo do YouTube ou um arquivo do celular.
                         if ((ended?.kind == Kind.YOUTUBE && !isLive.value) || ended?.url?.startsWith("content://") == true) next()
                     }
@@ -216,6 +242,42 @@ object PlayerHub {
 
     fun pause() { player.pause() }
 
+    /**
+     * O Android Auto desconectou (cabo solto, carro desligado). Pausa e, se o vídeo estava tocando,
+     * marca para voltar a tocar sozinho na próxima conexão.
+     */
+    fun onCarDisconnected() {
+        val pausedBySystem = android.os.SystemClock.elapsedRealtime() - autoPausedAt < 15_000
+        if (nowPlaying.value != null && (player.playWhenReady || pausedBySystem)) Prefs.resumeInCar = true
+        player.pause()
+        savePosition()
+    }
+
+    /**
+     * O Android Auto conectou. Se o vídeo foi interrompido pela desconexão, volta a tocar de onde parou
+     * e devolve true (para o carro abrir direto na tela do vídeo).
+     */
+    fun resumeInCar(): Boolean {
+        if (!Prefs.resumeInCar) return false
+        Prefs.resumeInCar = false
+        val item = nowPlaying.value
+        if (item == null) {
+            // O sistema fechou o app nesse meio-tempo: recarrega a fila guardada.
+            val (items, i) = Store.loadSession() ?: return false
+            play(items, i)
+            return true
+        }
+        retries = 0
+        if (failed) {
+            failed = false
+            status.value = "Reconectando…"
+            loading.value = true
+            if (item.kind == Kind.YOUTUBE) resumeYoutube(item, player.currentPosition)
+            else { player.prepare(); player.playWhenReady = true }
+        } else player.play()
+        return true
+    }
+
     fun play(items: List<Item>, startIndex: Int) {
         if (startIndex !in items.indices) return
         queue = items
@@ -233,6 +295,10 @@ object PlayerHub {
     }
 
     fun stop() {
+        savePosition()
+        tracking = false
+        Prefs.resumeInCar = false
+        Store.clearSession()
         job?.cancel()
         netJob?.cancel()
         player.stop()
@@ -250,6 +316,34 @@ object PlayerHub {
     fun bufferedMs(): Long = player.bufferedPosition
     fun liveNow(): Boolean = isLive.value || player.isCurrentMediaItemLive
     fun seekTo(ms: Long) { player.seekTo(ms.coerceAtLeast(0)) }
+
+    /**
+     * Guarda onde o vídeo atual está, para continuar dali na próxima vez (em qualquer aba, e mesmo
+     * depois de fechar o app). Não vale para transmissões ao vivo nem canais de TV, que não têm "onde parou".
+     */
+    private fun savePosition() {
+        if (!tracking) return
+        val item = nowPlaying.value ?: return
+        if (liveNow()) return
+        val dur = durationMs()
+        if (dur <= 0) return
+        val pos = player.currentPosition
+        // Bem no começo ou já no finalzinho: não há o que retomar.
+        if (pos < RESUME_MIN_MS || pos > dur - RESUME_END_MS) Store.clearPosition(item)
+        else Store.savePosition(item, pos)
+    }
+
+    /** Posição de onde [item] deve começar (0 = do início). */
+    private fun resumePosition(item: Item): Long {
+        if (item.isLive) return 0L
+        val pos = Store.positionOf(item)
+        val known = item.durationSec * 1000
+        return if (known > 0 && pos > known - RESUME_END_MS) 0L else pos
+    }
+
+    private const val SAVE_EVERY_MS = 5_000L
+    private const val RESUME_MIN_MS = 5_000L
+    private const val RESUME_END_MS = 10_000L
 
     /** Transmissão ao vivo em que dá para voltar no tempo (o YouTube guarda um trecho recente). */
     fun liveSeekable(): Boolean = liveNow() && player.isCurrentMediaItemSeekable && durationMs() > 30_000
@@ -386,12 +480,17 @@ object PlayerHub {
 
     private fun start() {
         val item = queue.getOrNull(index) ?: return
+        // Antes de trocar, guarda onde o vídeo anterior parou.
+        savePosition()
+        tracking = false
+        Prefs.resumeInCar = false
         job?.cancel()
         netJob?.cancel()
         retries = 0
         failed = false
         nowPlaying.value = item
         if (item.kind == Kind.YOUTUBE) Store.addHistory(item)
+        Store.saveSession(queue, index)
         status.value = "Carregando…"
         loading.value = true
         yt = null
@@ -408,16 +507,19 @@ object PlayerHub {
             try {
                 when (item.kind) {
                     Kind.STREAM -> {
-                        player.setMediaSource(
-                            DefaultMediaSourceFactory(iptvFactory).createMediaSource(MediaItem.fromUri(item.url))
-                        )
+                        val source = DefaultMediaSourceFactory(iptvFactory).createMediaSource(MediaItem.fromUri(item.url))
+                        // Arquivo do celular ou filme da lista: continua de onde parou. Canal ao vivo não guarda posição.
+                        val from = resumePosition(item)
+                        if (from > 0) player.setMediaSource(source, from) else player.setMediaSource(source)
+                        tracking = true
                         player.prepare()
                         player.playWhenReady = true
                     }
                     Kind.YOUTUBE -> {
                         val m = YouTube.resolveAsync(item.url)
                         setupYoutube(m)
-                        applyYt(keepPosition = false)
+                        applyYt(keepPosition = false, startMs = if (m.isLive) 0L else resumePosition(item))
+                        tracking = true
                         player.playWhenReady = true
                     }
                 }

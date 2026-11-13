@@ -1,4 +1,4 @@
-# AutoTV (v0.5.0)
+# AutoTV (v0.5.1)
 
 Player de YouTube, TV por lista (IPTV/M3U), vídeos do celular e navegador de internet para Android,
 com tela própria no Android Auto.
@@ -21,12 +21,16 @@ com tela própria no Android Auto.
 - **Favoritos:** itens salvos e o interruptor "Interface avançada no carro".
 - **Player:** qualidade automática ou manual (até 4K/60 fps, conforme o vídeo e o aparelho), idioma do
   áudio, legendas manuais e automáticas, brilho, tela cheia, indicador e retorno ao vivo.
+- **Continuar de onde parou:** o app guarda a posição de cada vídeo. Ao abrir de novo um vídeo já
+  começado (pelo Histórico ou por qualquer outra aba), ele volta do ponto em que parou.
 
 **No carro (Android Auto)**
 - Tela inicial com abas: Em alta, Seguindo, Ao vivo, Histórico, Celular, TV, Web, Favoritos e Buscar.
 - Listas de vídeo com miniaturas grandes, filtros e botão de atualizar.
 - Player desenhado pelo app: botões na tela, barra de progresso, ±10 s, brilho, qualidade, áudio e legendas.
 - Navegador de internet, com digitação pelo teclado do Android Auto.
+- Se o celular desconectar (cabo solto, saída do carro) com um vídeo tocando, ao reconectar o AutoTV
+  abre direto no vídeo, do ponto em que parou.
 - Se a tela do carro ficar preta, desligue "Interface avançada no carro" (aba Favoritos do celular)
   para usar o modo simples.
 
@@ -41,13 +45,6 @@ o `subscriptions.csv` (ou o .zip) do Google Takeout.
 2. Para aparecer no Android Auto: ative o modo desenvolvedor do Android Auto (10 toques em "Versão"),
    ligue **Fontes desconhecidas** e confira "Personalizar tela de início". Se o app não aparecer,
    instale com KingInstaller + Shizuku.
-
-## Compilar
-Cada push na branch `main` compila o APK pelo GitHub Actions (`.github/workflows/build.yml`) e atualiza
-a Release `latest`. O APK é assinado com a chave de depuração fixa do repositório (`app/debug.keystore`).
-
-## Se o YouTube parar
-Atualize `NewPipeExtractor` em `app/build.gradle.kts` (releases em github.com/TeamNewPipe/NewPipeExtractor).
 
 ## Apoie o projeto
 O AutoTV é gratuito e de código aberto. Se ele é útil para você e quiser apoiar o desenvolvimento,

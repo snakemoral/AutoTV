@@ -7,9 +7,13 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
-/** Persistência simples em JSON (playlists, favoritos, histórico e canais seguidos). */
+/** Persistência simples em JSON (playlists, favoritos, histórico, canais seguidos e posição dos vídeos). */
 object Store {
     private const val MAX_HISTORY = 60
+    private const val MAX_POSITIONS = 500
+    /** Quantos itens da fila são guardados antes e depois do vídeo atual. */
+    private const val SESSION_BEFORE = 20
+    private const val SESSION_AFTER = 30
 
     private lateinit var dir: File
     private val lock = Any()
@@ -26,6 +30,11 @@ object Store {
     private val _following = MutableStateFlow<List<Channel>>(emptyList())
     val following: StateFlow<List<Channel>> = _following
 
+    /** Onde cada vídeo parou (chave do vídeo -> milissegundos). O mais recente fica no fim. */
+    private val positions = LinkedHashMap<String, Long>()
+    /** Gravações frequentes (posição, fila) saem da thread principal, uma de cada vez e em ordem. */
+    private val io = java.util.concurrent.Executors.newSingleThreadExecutor()
+
     fun init(context: Context) {
         dir = context.filesDir
         synchronized(lock) {
@@ -33,6 +42,8 @@ object Store {
             _favorites.value = runCatching { readItems("favorites.json") }.getOrDefault(emptyList())
             _history.value = runCatching { readItems("history.json") }.getOrDefault(emptyList())
             _following.value = runCatching { readChannels() }.getOrDefault(emptyList())
+            positions.clear()
+            runCatching { readPositions() }
         }
     }
 
@@ -68,6 +79,81 @@ object Store {
     fun clearHistory() = synchronized(lock) {
         _history.value = emptyList()
         writeItems("history.json", emptyList())
+        positions.clear()
+        writePositions()
+    }
+
+    // ---- posição em que cada vídeo parou ----
+    /**
+     * Chave do vídeo para guardar a posição. No YouTube é o código do vídeo, para o mesmo vídeo ser
+     * reconhecido em qualquer aba (Em alta, Seguindo, Histórico, busca, link colado).
+     */
+    fun positionKey(item: Item): String {
+        if (item.kind == Kind.YOUTUBE) {
+            YT_ID.find(item.url)?.let { return "y:" + it.groupValues[1] }
+        }
+        return item.id
+    }
+
+    private val YT_ID = Regex("(?:[?&]v=|youtu\\.be/|/shorts/|/live/|/embed/)([A-Za-z0-9_-]{11})")
+
+    /** Posição guardada do vídeo, em milissegundos (0 = começar do início). */
+    fun positionOf(item: Item): Long = synchronized(lock) { positions[positionKey(item)] ?: 0L }
+
+    fun savePosition(item: Item, ms: Long) = synchronized(lock) {
+        val key = positionKey(item)
+        if (positions[key] == ms) return@synchronized
+        positions.remove(key)
+        positions[key] = ms
+        while (positions.size > MAX_POSITIONS) positions.remove(positions.keys.first())
+        writePositions()
+    }
+
+    fun clearPosition(item: Item) = synchronized(lock) {
+        if (positions.remove(positionKey(item)) != null) writePositions()
+    }
+
+    private fun writePositions() {
+        val arr = JSONArray()
+        positions.forEach { (k, v) -> arr.put(JSONArray().put(k).put(v)) }
+        val text = arr.toString()
+        io.execute { runCatching { atomicWrite(File(dir, "positions.json"), text) } }
+    }
+
+    private fun readPositions() {
+        val f = File(dir, "positions.json"); if (!f.exists()) return
+        val arr = JSONArray(f.readText())
+        for (i in 0 until arr.length()) {
+            val pair = arr.getJSONArray(i)
+            positions[pair.getString(0)] = pair.getLong(1)
+        }
+    }
+
+    // ---- última fila tocada (para retomar depois de o app ser fechado pelo sistema) ----
+    fun saveSession(queue: List<Item>, index: Int) {
+        if (index !in queue.indices) return
+        val from = (index - SESSION_BEFORE).coerceAtLeast(0)
+        val to = (index + SESSION_AFTER + 1).coerceAtMost(queue.size)
+        val arr = JSONArray(); queue.subList(from, to).forEach { arr.put(itemToJson(it)) }
+        val text = JSONObject().put("i", index - from).put("items", arr).toString()
+        io.execute { runCatching { atomicWrite(File(dir, "session.json"), text) } }
+    }
+
+    fun clearSession() {
+        io.execute { runCatching { File(dir, "session.json").delete() } }
+    }
+
+    /** A fila guardada e o índice do vídeo que estava tocando, ou null se não há. */
+    fun loadSession(): Pair<List<Item>, Int>? {
+        val f = File(dir, "session.json")
+        if (!f.exists()) return null
+        return runCatching {
+            val o = JSONObject(f.readText())
+            val arr = o.getJSONArray("items")
+            val items = List(arr.length()) { itemFromJson(arr.getJSONObject(it)) }
+            val i = o.getInt("i")
+            if (i in items.indices) items to i else null
+        }.getOrNull()
     }
 
     // ---- canais seguidos ----
