@@ -4,7 +4,10 @@ Player de YouTube, TV por lista (IPTV/M3U), vídeos do celular e navegador de in
 com tela própria no Android Auto.
 
 **Baixar o APK:** [versão mais recente](https://github.com/snakemoral/AutoTV/releases/tag/latest)
-(arquivo `AutoTV-debug.apk`, gerado automaticamente a cada mudança no código).
+(arquivo `AutoTV-debug.apk`).
+
+**Versões anteriores:** ficam todas na [página de versões](https://github.com/snakemoral/AutoTV/releases).
+Para voltar a uma versão mais antiga, desinstale o AutoTV antes de instalar o APK antigo.
 
 > **Status:** projeto pessoal em desenvolvimento. Testado pelo autor em um Xiaomi 12 Lite (Android 14)
 > com Android Auto. As versões saem sem bateria de testes; espere falhas, principalmente no carro.

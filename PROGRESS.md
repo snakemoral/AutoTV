@@ -45,4 +45,9 @@
 - Confirmado pelo usuário: tela dividida do Android Auto funciona (AutoTV no painel grande + cartão de música).
 - NÃO testado em aparelho: v0.5.0 e v0.5.1. O login e a leitura das inscrições da conta dependem de
   respostas do YouTube que não foi possível conferir daqui.
+- Publicação (pedido do usuário em 2026-11-13, vale sempre): toda versão nova deve ser publicada no main
+  sem perguntar, e as antigas continuam disponíveis. O workflow cria uma Release numerada por versão
+  (tag vX.Y.Z, arquivo AutoTV-X.Y.Z.apk, nunca apagada) e recria a "latest". Por isso, subir o
+  versionName/versionCode em app/build.gradle.kts a cada versão. Esta sessão não pode criar Releases
+  pela API; só o workflow cria.
 - Regra para quem continuar: LER o código antes de escrever; nunca sobrescrever arquivos inteiros sem ler.

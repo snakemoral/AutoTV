@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -25,11 +27,44 @@ jobs:
         with:
           name: AutoTV-debug-apk
           path: app/build/outputs/apk/debug/*.apk
-      - name: Publish APK to the 'latest' release
+      - name: Publish the APK (numbered release + 'latest')
         if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -e
+          version_of() { sed -n 's/.*versionName *= *"\([^"]*\)".*/\1/p' | head -1; }
+          VERSION=$(version_of < app/build.gradle.kts)
+          test -n "$VERSION"
           cp app/build/outputs/apk/debug/*.apk AutoTV-debug.apk
+          cp AutoTV-debug.apk "AutoTV-$VERSION.apk"
+
+          # 1) Before replacing 'latest', keep the build it holds as a numbered release
+          #    (only when that version has no release of its own yet).
+          PREV_SHA=$(gh release view latest --json targetCommitish -q .targetCommitish 2>/dev/null || true)
+          if [ -n "$PREV_SHA" ] && git cat-file -e "$PREV_SHA:app/build.gradle.kts" 2>/dev/null; then
+            PREV=$(git show "$PREV_SHA:app/build.gradle.kts" | version_of)
+            if [ -n "$PREV" ] && [ "$PREV" != "$VERSION" ] && ! gh release view "v$PREV" >/dev/null 2>&1; then
+              mkdir -p prev
+              gh release download latest --pattern AutoTV-debug.apk --dir prev
+              mv prev/AutoTV-debug.apk "prev/AutoTV-$PREV.apk"
+              gh release create "v$PREV" "prev/AutoTV-$PREV.apk" --title "AutoTV $PREV" \
+                --notes "Versão $PREV (commit ${PREV_SHA::7})." --target "$PREV_SHA" --latest=false
+            fi
+          fi
+
+          # 2) Numbered release of this version: never deleted, so old versions stay downloadable.
+          NOTES="Versão $VERSION (commit ${GITHUB_SHA::7})."
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            gh release upload "v$VERSION" "AutoTV-$VERSION.apk" --clobber
+            gh release edit "v$VERSION" --notes "$NOTES"
+          else
+            gh release create "v$VERSION" "AutoTV-$VERSION.apk" --title "AutoTV $VERSION" \
+              --notes "$NOTES" --target "$GITHUB_SHA" --latest=false
+          fi
+
+          # 3) 'latest' always points to the newest build (the link in the README).
           gh release delete latest --yes --cleanup-tag || true
-          gh release create latest AutoTV-debug.apk --title "AutoTV (build automática)" --notes "APK debug gerado a partir do commit ${GITHUB_SHA::7}" --target "$GITHUB_SHA"
+          gh release create latest AutoTV-debug.apk --title "AutoTV $VERSION (mais recente)" \
+            --notes "Versão $VERSION, APK gerado a partir do commit ${GITHUB_SHA::7}. Versões anteriores: https://github.com/$GITHUB_REPOSITORY/releases" \
+            --target "$GITHUB_SHA" --latest
