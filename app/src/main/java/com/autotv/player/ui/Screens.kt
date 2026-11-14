@@ -178,6 +178,7 @@ fun HomeTab(vm: MainViewModel) {
     val section by vm.homeSection.collectAsState()
     val feed by vm.feed.collectAsState()
     val history by vm.history.collectAsState()
+    val signedIn by vm.signedIn.collectAsState()
 
     LaunchedEffect(Unit) { vm.selectHome(section) }
 
@@ -233,9 +234,41 @@ fun HomeTab(vm: MainViewModel) {
                 HomeSection.HISTORY -> history
                 else -> feed?.takeIf { it.first == section }?.second.orEmpty()
             }
-            if (section == HomeSection.HISTORY && history.isNotEmpty()) {
+            if (section == HomeSection.HISTORY && (history.isNotEmpty() || signedIn)) {
+                val syncWanted by vm.historySyncWanted.collectAsState()
+                val syncing by vm.historySyncing.collectAsState()
+                // Ao abrir a aba, traz o que foi visto no YouTube do celular e da TV.
+                LaunchedEffect(signedIn, syncWanted) { vm.syncHistory() }
                 MediaList(vm, items, header = {
-                    TextButton(onClick = { vm.clearHistory() }) { Text("Limpar histórico") }
+                    Column {
+                        Row(
+                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (signedIn) {
+                                FilterChip(
+                                    selected = syncWanted,
+                                    onClick = { vm.setHistorySync(!syncWanted) },
+                                    label = { Text("Sincronizar com o YouTube") }
+                                )
+                                if (syncWanted) {
+                                    IconButton(onClick = { vm.syncHistory(force = true) }, enabled = !syncing) {
+                                        Icon(Icons.Default.Refresh, "Atualizar")
+                                    }
+                                }
+                            }
+                            if (history.isNotEmpty()) {
+                                TextButton(onClick = { vm.clearHistory() }) { Text("Limpar histórico") }
+                            }
+                        }
+                        if (history.isEmpty()) {
+                            Text(
+                                if (syncing) "Buscando o histórico da conta…" else "Nada assistido ainda.",
+                                Modifier.padding(16.dp), color = MaterialTheme.colorScheme.outline
+                            )
+                        }
+                    }
                 })
             } else {
                 if (items.isEmpty()) {

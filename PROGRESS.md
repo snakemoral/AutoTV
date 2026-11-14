@@ -1,5 +1,5 @@
 # Estado do projeto (para retomar após limite de uso)
-Última atualização: 2026-11-13 (v0.5.1).
+Última atualização: 2026-11-14 (v0.6.0).
 
 - Repositório: github.com/snakemoral/AutoTV, branch main. Cada push compila sozinho (GitHub Actions) e
   publica o APK na Release "latest". Trabalhar no clone em /home/claude/autotv-repo.
@@ -43,8 +43,17 @@
 - Dúvida em aberto: o usuário não viu qualidades acima de 1080p60 na v0.4.1. Causa não confirmada (ou o
   aparelho não declara suporte, ou o extrator não devolve esses streams). Pedir o nome de um vídeo de teste.
 - Confirmado pelo usuário: tela dividida do Android Auto funciona (AutoTV no painel grande + cartão de música).
-- NÃO testado em aparelho: v0.5.0 e v0.5.1. O login e a leitura das inscrições da conta dependem de
+- NÃO testado em aparelho: v0.5.0, v0.5.1 e v0.6.0. O login e a leitura das inscrições da conta dependem de
   respostas do YouTube que não foi possível conferir daqui.
+- v0.6.0: histórico sincronizado com a conta do YouTube (data/HistorySync.kt), só com login.
+  Leitura: Account.watchHistory() (browse FEhistory como TVHTML5; a porcentagem vista vem de
+  thumbnailOverlayResumePlaybackRenderer) e Store.mergeRemoteHistory junta com o histórico e as posições.
+  Escrita: Account.reportStart/reportProgress chamam os endereços playbackTracking da resposta de
+  /player (videostatsPlaybackUrl e videostatsWatchtimeUrl, mesmo método do yt-dlp --mark-watched);
+  PlayerHub.reportToAccount avisa ao abrir, a cada 30 s, ao pausar e ao terminar. Interruptor em
+  Início > Histórico (Prefs.syncHistory, ligado por padrão). "Limpar histórico" guarda os vídeos em
+  hidden.json para não voltarem na sincronização. NADA disso pôde ser conferido contra o YouTube daqui
+  (sem conta): se o histórico não vier ou não for gravado, conferir o formato das respostas.
 - Publicação (pedido do usuário em 2026-11-13, vale sempre): toda versão nova deve ser publicada no main
   sem perguntar, e as antigas continuam disponíveis. O workflow cria uma Release numerada por versão
   (tag vX.Y.Z, arquivo AutoTV-X.Y.Z.apk, nunca apagada) e recria a "latest". Por isso, subir o

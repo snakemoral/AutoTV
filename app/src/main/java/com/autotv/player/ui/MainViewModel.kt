@@ -71,6 +71,17 @@ class MainViewModel : ViewModel() {
     fun toggleFavorite(item: Item) = Store.toggleFavorite(item)
     fun clearHistory() = Store.clearHistory()
 
+    // ---- Histórico sincronizado com a conta do YouTube ----
+    val historySyncWanted = com.autotv.player.data.HistorySync.wanted
+    val historySyncing = com.autotv.player.data.HistorySync.syncing
+    fun setHistorySync(on: Boolean) = com.autotv.player.data.HistorySync.setWanted(on)
+
+    fun syncHistory(force: Boolean = false) {
+        viewModelScope.launch {
+            com.autotv.player.data.HistorySync.sync(force)?.let { message.value = "Histórico da conta: $it" }
+        }
+    }
+
     // ---- Listas de TV ----
     private fun buildPlaylist(id: String, name: String, source: String, text: String): Playlist {
         val items = M3uParser.parse(text).map { streamItem(it.name, it.url, it.group, it.logo) }
@@ -235,6 +246,7 @@ class MainViewModel : ViewModel() {
                 loginCode.value = null
                 if (!ok) { message.value = "O código venceu. Toque em Entrar para gerar outro."; return@launch }
                 message.value = "Conta conectada"
+                com.autotv.player.data.HistorySync.syncInBackground(force = true)
                 // Tenta também copiar a lista de canais para o app (se a API permitir).
                 val channels = withContext(Dispatchers.IO) { runCatching { Account.subscribedChannels() }.getOrDefault(emptyList()) }
                 if (channels.isNotEmpty()) {

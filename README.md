@@ -1,4 +1,4 @@
-# AutoTV (v0.5.1)
+# AutoTV (v0.6.0)
 
 Player de YouTube, TV por lista (IPTV/M3U), vídeos do celular e navegador de internet para Android,
 com tela própria no Android Auto.
@@ -42,6 +42,13 @@ Em Seguindo > "Entrar com Google" o app mostra um código para digitar em google
 método das TVs). A senha e a verificação em duas etapas ficam no navegador; o app guarda só uma chave do
 YouTube, cifrada, que pode ser revogada em myaccount.google.com/permissions. Sem login, dá para importar
 o `subscriptions.csv` (ou o .zip) do Google Takeout.
+
+**Histórico sincronizado com o YouTube**
+Com a conta conectada, o Histórico do AutoTV é o mesmo da sua conta do YouTube: aparecem os vídeos vistos
+no celular e na TV, eles continuam do ponto em que pararam lá, e o que você assiste no AutoTV entra no
+histórico da conta. Para desligar, use o interruptor "Sincronizar com o YouTube" em Início > Histórico.
+"Limpar histórico" limpa só o histórico do app, não o da conta. Se o histórico de exibição estiver pausado
+na sua conta Google, o YouTube não registra nada.
 
 ## Instalar
 1. Baixe o `AutoTV-debug.apk` no link acima e instale. Versões novas instalam por cima da anterior.

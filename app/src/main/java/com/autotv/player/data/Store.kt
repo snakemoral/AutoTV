@@ -11,6 +11,7 @@ import java.io.File
 object Store {
     private const val MAX_HISTORY = 60
     private const val MAX_POSITIONS = 500
+    private const val MAX_HIDDEN = 300
     /** Quantos itens da fila são guardados antes e depois do vídeo atual. */
     private const val SESSION_BEFORE = 20
     private const val SESSION_AFTER = 30
@@ -32,6 +33,10 @@ object Store {
 
     /** Onde cada vídeo parou (chave do vídeo -> milissegundos). O mais recente fica no fim. */
     private val positions = LinkedHashMap<String, Long>()
+    /** Vídeos vistos neste app desde a última sincronização com a conta (a versão daqui é a mais nova). */
+    private val recentLocal = HashSet<String>()
+    /** Vídeos que o usuário limpou do histórico do app: não voltam na sincronização. */
+    private val hidden = LinkedHashSet<String>()
     /** Gravações frequentes (posição, fila) saem da thread principal, uma de cada vez e em ordem. */
     private val io = java.util.concurrent.Executors.newSingleThreadExecutor()
 
@@ -44,6 +49,8 @@ object Store {
             _following.value = runCatching { readChannels() }.getOrDefault(emptyList())
             positions.clear()
             runCatching { readPositions() }
+            hidden.clear()
+            runCatching { readHidden() }
         }
     }
 
@@ -71,16 +78,91 @@ object Store {
     // ---- histórico (só YouTube) ----
     fun addHistory(item: Item) = synchronized(lock) {
         if (item.kind != Kind.YOUTUBE) return@synchronized
-        val list = (listOf(item) + _history.value.filterNot { it.id == item.id }).take(MAX_HISTORY)
+        val key = positionKey(item)
+        val list = (listOf(item) + _history.value.filterNot { positionKey(it) == key }).take(MAX_HISTORY)
         _history.value = list
         writeItems("history.json", list)
+        recentLocal += key
+        if (hidden.remove(key)) writeHidden()
     }
 
     fun clearHistory() = synchronized(lock) {
         _history.value = emptyList()
+        // Com a conta conectada, o que foi limpo aqui não volta na próxima sincronização
+        // (o histórico da conta, no YouTube, não é apagado).
+        _history.value.forEach { hidden += positionKey(it) }
+        while (hidden.size > MAX_HIDDEN) hidden.remove(hidden.first())
+        writeHidden()
+        recentLocal.clear()
+        _history.value = emptyList()
         writeItems("history.json", emptyList())
         positions.clear()
         writePositions()
+    }
+
+    /** Código do vídeo no YouTube (11 caracteres), ou null se o item não é do YouTube. */
+    fun youtubeId(item: Item): String? =
+        if (item.kind == Kind.YOUTUBE) YT_ID.find(item.url)?.groupValues?.get(1) else null
+
+    /**
+     * Junta o histórico da conta do YouTube ([remote], do mais recente para o mais antigo) com o do app.
+     * Ordem final: o que foi visto aqui desde a última sincronização, depois o histórico da conta,
+     * depois o resto do histórico do app. Também traz o ponto em que cada vídeo parou nos outros aparelhos.
+     */
+    fun mergeRemoteHistory(remote: List<Watched>) = synchronized(lock) {
+        val local = _history.value
+        val fresh = local.filter { positionKey(it) in recentLocal }
+        val used = fresh.map { positionKey(it) }.toHashSet()
+        val fromAccount = remote.filter { it.item.kind == Kind.YOUTUBE }.map { it.item }.filter {
+            val key = positionKey(it)
+            key !in hidden && used.add(key)
+        }
+        val rest = local.filter { used.add(positionKey(it)) }
+        val list = (fresh + fromAccount + rest).take(MAX_HISTORY)
+        if (list != local) {
+            _history.value = list
+            writeItems("history.json", list)
+        }
+
+        var changed = false
+        for (w in remote) {
+            val key = positionKey(w.item)
+            // Visto aqui por último: a posição do app é a mais nova (e já foi avisada ao YouTube).
+            if (key in recentLocal) continue
+            val durMs = w.item.durationSec * 1000
+            if (w.percent < 0 || durMs <= 0 || w.item.isLive) continue
+            val remotePos = durMs * w.percent / 100
+            if (w.percent >= 97 || remotePos > durMs - 10_000) {
+                // Visto até o fim em outro aparelho: começa do início.
+                if (positions.remove(key) != null) changed = true
+                continue
+            }
+            if (remotePos < 5_000) continue
+            // A conta só informa a porcentagem (número inteiro): diferenças pequenas não são novidade.
+            val tolerance = maxOf(30_000L, durMs * 2 / 100)
+            val mine = positions[key]
+            if (mine == null || kotlin.math.abs(mine - remotePos) > tolerance) {
+                positions.remove(key)
+                positions[key] = remotePos
+                changed = true
+            }
+        }
+        while (positions.size > MAX_POSITIONS) positions.remove(positions.keys.first())
+        if (changed) writePositions()
+        // O que já apareceu no histórico da conta deixa de ser "novidade daqui".
+        remote.forEach { recentLocal.remove(positionKey(it.item)) }
+    }
+
+    private fun writeHidden() {
+        val arr = JSONArray(); hidden.forEach { arr.put(it) }
+        val text = arr.toString()
+        io.execute { runCatching { atomicWrite(File(dir, "hidden.json"), text) } }
+    }
+
+    private fun readHidden() {
+        val f = File(dir, "hidden.json"); if (!f.exists()) return
+        val arr = JSONArray(f.readText())
+        for (i in 0 until arr.length()) hidden += arr.getString(i)
     }
 
     // ---- posição em que cada vídeo parou ----

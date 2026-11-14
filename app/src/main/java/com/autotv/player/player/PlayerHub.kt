@@ -135,7 +135,7 @@ object PlayerHub {
                 // Enquanto toca, guarda a posição a cada poucos segundos; ao parar, guarda na hora.
                 saveJob?.cancel()
                 if (isPlaying) {
-                    saveJob = scope.launch { while (true) { delay(SAVE_EVERY_MS); savePosition() } }
+                    saveJob = scope.launch { while (true) { delay(SAVE_EVERY_MS); savePosition(periodic = true) } }
                 } else savePosition()
             }
 
@@ -160,7 +160,10 @@ object PlayerHub {
                         loading.value = false
                         val ended = nowPlaying.value
                         // Visto até o fim: da próxima vez começa do início.
-                        if (ended != null && tracking) Store.clearPosition(ended)
+                        if (ended != null && tracking) {
+                            Store.clearPosition(ended)
+                            reportToAccount(ended, durationMs(), durationMs(), force = true)
+                        }
                         // Passa para o próximo ao terminar um vídeo do YouTube ou um arquivo do celular.
                         if ((ended?.kind == Kind.YOUTUBE && !isLive.value) || ended?.url?.startsWith("content://") == true) next()
                     }
@@ -321,17 +324,41 @@ object PlayerHub {
      * Guarda onde o vídeo atual está, para continuar dali na próxima vez (em qualquer aba, e mesmo
      * depois de fechar o app). Não vale para transmissões ao vivo nem canais de TV, que não têm "onde parou".
      */
-    private fun savePosition() {
+    private fun savePosition(periodic: Boolean = false) {
         if (!tracking) return
         val item = nowPlaying.value ?: return
         if (liveNow()) return
         val dur = durationMs()
         if (dur <= 0) return
         val pos = player.currentPosition
+        reportToAccount(item, pos, dur, force = !periodic)
         // Bem no começo ou já no finalzinho: não há o que retomar.
         if (pos < RESUME_MIN_MS || pos > dur - RESUME_END_MS) Store.clearPosition(item)
         else Store.savePosition(item, pos)
     }
+
+    /**
+     * Com a conta Google conectada, avisa o YouTube do ponto em que o vídeo está, para o histórico e o
+     * "continuar assistindo" do celular e da TV acompanharem. Enquanto toca, avisa a cada 30 s.
+     */
+    private fun reportToAccount(item: Item, posMs: Long, durMs: Long, force: Boolean) {
+        val id = Store.youtubeId(item) ?: return
+        if (durMs <= 0) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (id == reportedId) {
+            if (kotlin.math.abs(posMs - reportedPos) < 2_000) return
+            if (!force && now - reportedAt < REPORT_EVERY_MS) return
+        }
+        reportedId = id
+        reportedPos = posMs
+        reportedAt = now
+        com.autotv.player.data.Account.reportProgress(id, posMs / 1000.0, durMs / 1000.0)
+    }
+
+    private var reportedId: String? = null
+    private var reportedPos = 0L
+    private var reportedAt = 0L
+    private const val REPORT_EVERY_MS = 30_000L
 
     /** Posição de onde [item] deve começar (0 = do início). */
     private fun resumePosition(item: Item): Long {
@@ -518,8 +545,14 @@ object PlayerHub {
                     Kind.YOUTUBE -> {
                         val m = YouTube.resolveAsync(item.url)
                         setupYoutube(m)
-                        applyYt(keepPosition = false, startMs = if (m.isLive) 0L else resumePosition(item))
+                        val from = if (m.isLive) 0L else resumePosition(item)
+                        applyYt(keepPosition = false, startMs = from)
                         tracking = true
+                        // Conta conectada: o vídeo entra no histórico do YouTube.
+                        Store.youtubeId(item)?.let {
+                            reportedId = it; reportedPos = from; reportedAt = android.os.SystemClock.elapsedRealtime()
+                            com.autotv.player.data.Account.reportStart(it, from / 1000.0)
+                        }
                         player.playWhenReady = true
                     }
                 }

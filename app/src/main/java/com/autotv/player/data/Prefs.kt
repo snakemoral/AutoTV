@@ -57,6 +57,11 @@ object Prefs {
         get() = sp.getBoolean("resume_car", false)
         set(v) { sp.edit().putBoolean("resume_car", v).apply() }
 
+    /** Sincronizar o histórico com a conta do YouTube (só tem efeito com a conta Google conectada). */
+    var syncHistory: Boolean
+        get() = sp.getBoolean("sync_history", true)
+        set(v) { sp.edit().putBoolean("sync_history", v).apply() }
+
     /** Idioma de legenda preferido ("" = desligada). */
     var subtitleLang: String
         get() = sp.getString("sub_lang", "") ?: ""

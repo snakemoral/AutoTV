@@ -15,6 +15,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import com.autotv.player.R
 import com.autotv.player.data.Account
+import com.autotv.player.data.HistorySync
 import com.autotv.player.data.Item
 import com.autotv.player.data.LocalVideos
 import com.autotv.player.data.Store
@@ -91,7 +92,7 @@ class HubScreen(ctx: CarContext) : Screen(ctx) {
         tabs += Chip("search", "Buscar")
 
         val filters = ArrayList<Chip>()
-        if (section != "history") filters += Chip("refresh", "⟳ Atualizar")
+        if (section != "history" || HistorySync.enabled) filters += Chip("refresh", "⟳ Atualizar")
         when (section) {
             "trending" -> {
                 filters += Chip("all", "Tudo", filter() == "all")
@@ -165,7 +166,11 @@ class HubScreen(ctx: CarContext) : Screen(ctx) {
                     }
                     "following" -> withContext(Dispatchers.IO) { Account.followingItems(force) }
                     "live" -> withContext(Dispatchers.IO) { YouTube.kiosk("live") }
-                    "history" -> Store.history.value
+                    "history" -> {
+                        // Com a conta conectada, traz antes o que foi visto no celular e na TV.
+                        HistorySync.sync(force)
+                        Store.history.value
+                    }
                     "local" -> withContext(Dispatchers.IO) { LocalVideos.list(app) }
                     else -> emptyList()
                 }

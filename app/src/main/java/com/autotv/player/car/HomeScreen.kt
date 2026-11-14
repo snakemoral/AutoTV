@@ -66,9 +66,12 @@ class HomeScreen(ctx: CarContext) : PagedScreen(ctx, "AutoTV", isRoot = true, en
     }
     list += Entry("Buscar no YouTube", "Digite no carro") { it.screenManager.push(YouTubeSearchScreen(it.carContext)) }
     val history = Store.history.value
-    if (history.isNotEmpty()) {
+    if (history.isNotEmpty() || com.autotv.player.data.HistorySync.enabled) {
         list += Entry("Histórico", "${history.size} vídeos") { s ->
-            s.screenManager.push(videoList(s.carContext, "Histórico") { Store.history.value })
+            s.screenManager.push(videoList(s.carContext, "Histórico") {
+                com.autotv.player.data.HistorySync.sync()
+                Store.history.value
+            })
         }
     }
     val favs = Store.favorites.value

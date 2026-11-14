@@ -20,6 +20,9 @@ class AutoTvApp : Application(), coil.ImageLoaderFactory {
         com.autotv.player.data.Account.init(this)
         YouTube.init(Http.client)
         PlayerHub.init(this)
+        // Com a conta conectada, já traz o histórico visto em outros aparelhos.
+        com.autotv.player.data.HistorySync.init()
+        com.autotv.player.data.HistorySync.syncInBackground()
         // Segunda garantia: ao sair do Android Auto, pausa.
         var wasInCar = false
         runCatching {

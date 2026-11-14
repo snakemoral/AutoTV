@@ -7,6 +7,7 @@ import android.security.keystore.KeyProperties
 import android.util.Base64
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.json.JSONArray
 import org.json.JSONObject
 import java.security.KeyStore
@@ -120,6 +121,7 @@ object Account {
         refreshToken = null
         accessToken = null
         sp.edit().remove("rt").apply()
+        tracking = null
         signedIn.value = false
     }
 
@@ -149,6 +151,110 @@ object Account {
     }
 
     // ------------------------------------------------------------------ dados da conta
+
+    private fun tvContext() = JSONObject().put("client", JSONObject()
+        .put("clientName", "TVHTML5")
+        .put("clientVersion", TV_CLIENT_VERSION)
+        .put("hl", "pt")
+        .put("gl", "BR"))
+
+    /** Consulta à API interna do YouTube como o app de TV, com a conta conectada. */
+    private fun innertube(endpoint: String, body: JSONObject): JSONObject {
+        val (code, text) = Http.postJson(
+            "https://www.youtube.com/youtubei/v1/$endpoint?prettyPrint=false",
+            body.put("context", tvContext()).toString(),
+            mapOf("Authorization" to "Bearer ${token()}", "User-Agent" to TV_UA)
+        )
+        if (code != 200) error("O YouTube recusou a consulta (HTTP $code)")
+        return JSONObject(text)
+    }
+
+    // ------------------------------------------------------------------ histórico de exibição
+
+    /**
+     * Histórico de exibição da conta (o mesmo do app do YouTube no celular e na TV), do mais recente
+     * para o mais antigo, com a porcentagem já vista de cada vídeo quando o YouTube informa.
+     */
+    fun watchHistory(): List<Watched> {
+        val json = innertube("browse", JSONObject().put("browseId", "FEhistory"))
+        val tiles = ArrayList<JSONObject>()
+        collect(json, "tileRenderer", tiles)
+        return tiles.mapNotNull { tile ->
+            val item = tileToItem(tile) ?: return@mapNotNull null
+            val resume = ArrayList<JSONObject>()
+            collect(tile, "thumbnailOverlayResumePlaybackRenderer", resume)
+            Watched(item, resume.firstOrNull()?.optInt("percentDurationWatched", -1) ?: -1)
+        }.distinctBy { it.item.id }
+    }
+
+    /** Endereços que o YouTube dá para o player avisar o que está sendo assistido. */
+    private class Tracking(val videoId: String, val playbackUrl: String, val watchtimeUrl: String?, val cpn: String) {
+        var lastSec = 0.0
+    }
+
+    private var tracking: Tracking? = null
+    /** Os avisos saem um de cada vez, em ordem, fora da thread principal. */
+    private val reporter = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private const val CPN_ALPHABET = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
+
+    private fun trackingFor(videoId: String): Tracking? {
+        tracking?.let { if (it.videoId == videoId) return it }
+        val json = innertube(
+            "player",
+            JSONObject().put("videoId", videoId).put("contentCheckOk", true).put("racyCheckOk", true)
+        )
+        val t = json.optJSONObject("playbackTracking") ?: return null
+        val playback = t.optJSONObject("videostatsPlaybackUrl")?.optString("baseUrl")?.takeIf { it.isNotBlank() } ?: return null
+        val watchtime = t.optJSONObject("videostatsWatchtimeUrl")?.optString("baseUrl")?.takeIf { it.isNotBlank() }
+        val cpn = String(CharArray(16) { CPN_ALPHABET[java.security.SecureRandom().nextInt(64)] })
+        return Tracking(videoId, playback, watchtime, cpn).also { tracking = it }
+    }
+
+    private fun ping(base: String, cpn: String, params: Map<String, String>) {
+        val url = base.toHttpUrlOrNull() ?: return
+        val b = url.newBuilder()
+            .setQueryParameter("ver", "2")
+            .setQueryParameter("cpn", cpn)
+            .setQueryParameter("el", "detailpage")
+        params.forEach { (k, v) -> b.setQueryParameter(k, v) }
+        Http.getWeb(b.build().toString(), mapOf("Authorization" to "Bearer ${token()}", "User-Agent" to TV_UA))
+    }
+
+    private fun secs(v: Double) = String.format(java.util.Locale.US, "%.1f", v)
+
+    private fun reporting() = signedIn.value && Prefs.syncHistory
+
+    /** Avisa o YouTube que o vídeo começou a tocar: ele entra no histórico da conta. Não bloqueia. */
+    fun reportStart(videoId: String, positionSec: Double) {
+        if (!reporting()) return
+        reporter.execute {
+            runCatching {
+                tracking = null // endereços novos a cada vez que o vídeo é aberto
+                val t = trackingFor(videoId) ?: return@runCatching
+                t.lastSec = positionSec
+                ping(t.playbackUrl, t.cpn, mapOf("cmt" to secs(positionSec)))
+            }
+        }
+    }
+
+    /** Avisa o YouTube do ponto em que o vídeo está, para os outros aparelhos continuarem dali. Não bloqueia. */
+    fun reportProgress(videoId: String, positionSec: Double, lengthSec: Double) {
+        if (!reporting()) return
+        reporter.execute {
+            runCatching {
+                val t = trackingFor(videoId) ?: return@runCatching
+                val url = t.watchtimeUrl ?: return@runCatching
+                val from = minOf(t.lastSec, positionSec)
+                val params = HashMap<String, String>()
+                params["cmt"] = secs(positionSec)
+                params["st"] = secs(from)
+                params["et"] = secs(positionSec)
+                if (lengthSec > 0) params["len"] = secs(lengthSec)
+                ping(url, t.cpn, params)
+                t.lastSec = positionSec
+            }
+        }
+    }
 
     /** Vídeos novos das inscrições da conta (a página "Inscrições" do YouTube). */
     fun subscriptionsFeed(): List<Item> {

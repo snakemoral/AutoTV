@@ -22,6 +22,9 @@ data class Item(
     val live: Boolean get() = isLive
 }
 
+/** Um vídeo do histórico da conta do YouTube e quanto dele já foi visto (0 a 100; -1 = não informado). */
+class Watched(val item: Item, val percent: Int)
+
 /** Canal do YouTube seguido. */
 data class Channel(val url: String, val name: String)
 
