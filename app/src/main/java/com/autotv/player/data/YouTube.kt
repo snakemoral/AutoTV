@@ -528,7 +528,50 @@ object YouTube {
         return if (i >= 0) i else videos.lastIndex
     }
 
-    suspend fun resolveAsync(url: String): YtMedia = withContext(Dispatchers.IO) { resolve(url) }
+    // ---- vídeos já encontrados (para abrir mais rápido) ----
+    private const val RESOLVED_MS = 30 * 60 * 1000L
+    private const val RESOLVED_MAX = 12
+    private val resolved = LinkedHashMap<String, Pair<Long, YtMedia>>()
+    private val resolveLocks = HashMap<String, Any>()
+    private val prefetcher = java.util.concurrent.Executors.newFixedThreadPool(2) { r ->
+        Thread(r, "yt-prefetch").apply { isDaemon = true }
+    }
+
+    /**
+     * Como [resolve], mas reaproveita por até 30 minutos o que já foi encontrado para o mesmo vídeo
+     * (os endereços do YouTube valem por horas). [fresh] ignora o guardado: use quando o endereço falhou.
+     * Se o mesmo vídeo já está sendo procurado (por [prefetch]), espera esse resultado em vez de repetir.
+     */
+    fun resolveCached(url: String, fresh: Boolean = false): YtMedia {
+        val lock = synchronized(resolveLocks) { resolveLocks.getOrPut(url) { Any() } }
+        synchronized(lock) {
+            if (!fresh) synchronized(resolved) {
+                resolved[url]?.let { (at, media) -> if (System.currentTimeMillis() - at < RESOLVED_MS) return media }
+            }
+            val media = resolve(url)
+            synchronized(resolved) {
+                resolved.remove(url)
+                // Transmissões ao vivo mudam de estado (começam, terminam): não vale guardar.
+                if (!media.isLive) resolved[url] = System.currentTimeMillis() to media
+                while (resolved.size > RESOLVED_MAX) resolved.remove(resolved.keys.first())
+            }
+            return media
+        }
+    }
+
+    /** Procura o vídeo em segundo plano para ele abrir na hora quando for escolhido. Erros são ignorados. */
+    fun prefetch(url: String) {
+        synchronized(resolved) {
+            resolved[url]?.let { (at, _) -> if (System.currentTimeMillis() - at < RESOLVED_MS) return }
+        }
+        prefetcher.execute { runCatching { resolveCached(url) } }
+    }
+
+    /** Esquece os endereços guardados (eles são presos à rede em que foram obtidos). */
+    fun clearResolved() = synchronized(resolved) { resolved.clear() }
+
+    suspend fun resolveAsync(url: String, fresh: Boolean = false): YtMedia =
+        withContext(Dispatchers.IO) { resolveCached(url, fresh) }
 }
 
 /** Implementação do Downloader do NewPipeExtractor usando OkHttp. */

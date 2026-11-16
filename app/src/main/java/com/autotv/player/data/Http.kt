@@ -26,11 +26,16 @@ object Http {
         }
     }
 
+    /** Mesmo cliente (mesmas conexões abertas), mas que desiste rápido: para consultas com servidor reserva. */
+    val quick: OkHttpClient by lazy {
+        client.newBuilder().connectTimeout(5, TimeUnit.SECONDS).readTimeout(12, TimeUnit.SECONDS).build()
+    }
+
     /** GET como navegador. Bloqueante. */
-    fun getWeb(url: String, headers: Map<String, String> = emptyMap()): String {
+    fun getWeb(url: String, headers: Map<String, String> = emptyMap(), http: OkHttpClient = client): String {
         val b = Request.Builder().url(url).header("User-Agent", UA_WEB)
         headers.forEach { (k, v) -> b.header(k, v) }
-        client.newCall(b.build()).execute().use { resp ->
+        http.newCall(b.build()).execute().use { resp ->
             if (!resp.isSuccessful) error("HTTP ${resp.code}")
             return resp.body?.string().orEmpty()
         }

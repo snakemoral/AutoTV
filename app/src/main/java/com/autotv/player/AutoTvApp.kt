@@ -23,6 +23,11 @@ class AutoTvApp : Application(), coil.ImageLoaderFactory {
         // Com a conta conectada, já traz o histórico visto em outros aparelhos.
         com.autotv.player.data.HistorySync.init()
         com.autotv.player.data.HistorySync.syncInBackground()
+        // Adianta em segundo plano o que costuma demorar na primeira vez: a lista de rádios e a preparação
+        // do YouTube (feita com o último vídeo assistido, que é o candidato a ser retomado).
+        com.autotv.player.data.Radio.init(this)
+        com.autotv.player.data.Radio.warmUp()
+        Store.history.value.firstOrNull()?.let { YouTube.prefetch(it.url) }
         // Segunda garantia: ao sair do Android Auto, pausa.
         var wasInCar = false
         runCatching {

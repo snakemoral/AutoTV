@@ -1,5 +1,5 @@
 # Estado do projeto (para retomar após limite de uso)
-Última atualização: 2026-11-16 (v0.8.2; rótulos da barra inferior do celular em letra menor, NavLabel em Screens.kt, para não cortar).
+Última atualização: 2026-11-16 (v0.8.3).
 
 - Repositório: github.com/snakemoral/AutoTV, branch main. Cada push compila sozinho (GitHub Actions) e
   publica o APK na Release "latest". Trabalhar no clone em /home/claude/autotv-repo.
@@ -73,6 +73,13 @@
   Cada rádio vira um Item do tipo STREAM (toca pelo mesmo caminho da IPTV; Favoritos funcionam).
   Celular: aba "TV/Rádio" (TvRadioTab) com gêneros e busca por nome. Carro: aba "Rádio" no HubScreen
   com gêneros (sem busca) e entrada "Rádios online" no modo simples. Não conferido contra o catálogo daqui.
+- v0.8.3: velocidade. (1) Rádios: Radio.stations responde com a lista guardada em cacheDir/radio e
+  renova em segundo plano depois de 6 h; Radio.warmUp() na abertura do app; servidor que respondeu vira
+  o preferido; cliente Http.quick (desiste em 5 s). (2) Player: DefaultLoadControl começa a tocar com 1 s
+  carregado (era 2,5 s) e volta de rebuffer com 2,5 s (era 5 s). (3) YouTube: YouTube.resolveCached guarda
+  o resultado por 30 min (limpo ao trocar de rede; recarga por erro usa fresh = true), YouTube.prefetch
+  prepara o próximo da fila 8 s depois de o atual começar e, na abertura do app, o último do histórico
+  (isso também baixa o player JS do YouTube, que era o custo da "primeira vez").
 - Publicação (pedido do usuário em 2026-11-13, vale sempre): toda versão nova deve ser publicada no main
   sem perguntar, e as antigas continuam disponíveis. O workflow cria uma Release numerada por versão
   (tag vX.Y.Z, arquivo AutoTV-X.Y.Z.apk, nunca apagada) e recria a "latest". Por isso, subir o

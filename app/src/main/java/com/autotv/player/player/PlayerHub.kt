@@ -132,7 +132,17 @@ object PlayerHub {
         )
         // Se o decodificador principal (por hardware) falhar, tenta os outros do aparelho.
         val renderers = androidx.media3.exoplayer.DefaultRenderersFactory(app).setEnableDecoderFallback(true)
+        // Começa a tocar com 1 s carregado (o padrão é 2,5 s) e volta de uma pausa por falta de dados com
+        // 2,5 s (o padrão é 5 s): rádios e vídeos abrem mais rápido. O resto do carregamento segue o padrão.
+        val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                androidx.media3.exoplayer.DefaultLoadControl.DEFAULT_MIN_BUFFER_MS,
+                androidx.media3.exoplayer.DefaultLoadControl.DEFAULT_MAX_BUFFER_MS,
+                1_000, 2_500
+            )
+            .build()
         player = ExoPlayer.Builder(app, renderers)
+            .setLoadControl(loadControl)
             .setMediaSourceFactory(DefaultMediaSourceFactory(iptvFactory))
             .setWakeMode(C.WAKE_MODE_NETWORK)
             // Pede o "foco de áudio": outros apps (Spotify etc.) pausam quando o AutoTV toca, e vice-versa.
@@ -228,6 +238,7 @@ object PlayerHub {
                     scope.launch {
                         val changed = lastNetwork != null && lastNetwork != network
                         lastNetwork = network
+                        if (changed) YouTube.clearResolved()
                         if (changed || failed) reloadAfterNetworkChange()
                     }
                 }
@@ -451,6 +462,7 @@ object PlayerHub {
     private var reportedPos = 0L
     private var reportedAt = 0L
     private const val REPORT_EVERY_MS = 30_000L
+    private const val PREFETCH_NEXT_AFTER_MS = 8_000L
 
     /** Posição de onde [item] deve começar (0 = do início). */
     private fun resumePosition(item: Item): Long {
@@ -652,6 +664,12 @@ object PlayerHub {
                             com.autotv.player.data.Account.reportStart(it, from / 1000.0)
                         }
                         player.playWhenReady = true
+                        // Daqui a pouco, já deixa o próximo vídeo da fila encontrado, para a troca ser rápida.
+                        val next = queue.getOrNull(index + 1)
+                        if (next != null && next.kind == Kind.YOUTUBE) {
+                            delay(PREFETCH_NEXT_AFTER_MS)
+                            if (nowPlaying.value === item) YouTube.prefetch(next.url)
+                        }
                     }
                 }
             } catch (e: CancellationException) {
@@ -678,7 +696,8 @@ object PlayerHub {
         job?.cancel()
         job = scope.launch {
             try {
-                val m = YouTube.resolveAsync(item.url)
+                // Recarga depois de erro ou troca de rede: o endereço guardado não serve mais.
+                val m = YouTube.resolveAsync(item.url, fresh = true)
                 val oldVideoHeight = yt?.videos?.getOrNull(selVideo)?.height
                 setupYoutube(m)
                 if (oldVideoHeight != null) {
