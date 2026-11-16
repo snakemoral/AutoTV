@@ -1,5 +1,5 @@
 # Estado do projeto (para retomar após limite de uso)
-Última atualização: 2026-11-16 (v0.8.1; corrige o rótulo "TV/Rádio" cortado na barra inferior).
+Última atualização: 2026-11-16 (v0.8.2; rótulos da barra inferior do celular em letra menor, NavLabel em Screens.kt, para não cortar).
 
 - Repositório: github.com/snakemoral/AutoTV, branch main. Cada push compila sozinho (GitHub Actions) e
   publica o APK na Release "latest". Trabalhar no clone em /home/claude/autotv-repo.

@@ -71,6 +71,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -119,18 +120,17 @@ fun AppRoot(vm: MainViewModel) {
         bottomBar = {
             NavigationBar {
                 NavigationBarItem(selected = tab == 0, onClick = { tab = 0 },
-                    icon = { Icon(Icons.Default.Home, null) }, label = { Text("Início") })
+                    icon = { Icon(Icons.Default.Home, null) }, label = { NavLabel("Início") })
                 NavigationBarItem(selected = tab == 1, onClick = { tab = 1 },
-                    icon = { Icon(Icons.Default.Person, null) }, label = { Text("Seguindo", maxLines = 1) })
+                    icon = { Icon(Icons.Default.Person, null) }, label = { NavLabel("Seguindo") })
                 NavigationBarItem(selected = tab == 2, onClick = { tab = 2 },
-                    icon = { Icon(Icons.Default.Menu, null) }, // softWrap = false: sem isso o texto quebra depois da barra e "Rádio" some na segunda linha.
-                    label = { Text("TV/Rádio", maxLines = 1, softWrap = false) })
+                    icon = { Icon(Icons.Default.Menu, null) }, label = { NavLabel("TV/Rádio") })
                 NavigationBarItem(selected = tab == 3, onClick = { tab = 3 },
-                    icon = { Icon(Icons.Default.PlayArrow, null) }, label = { Text("Baixados", maxLines = 1) })
+                    icon = { Icon(Icons.Default.PlayArrow, null) }, label = { NavLabel("Baixados") })
                 NavigationBarItem(selected = tab == 4, onClick = { tab = 4 },
-                    icon = { Icon(Icons.Default.Search, null) }, label = { Text("Web", maxLines = 1) })
+                    icon = { Icon(Icons.Default.Search, null) }, label = { NavLabel("Web") })
                 NavigationBarItem(selected = tab == 5, onClick = { tab = 5 },
-                    icon = { Icon(Icons.Default.Favorite, null) }, label = { Text("Favoritos", maxLines = 1) })
+                    icon = { Icon(Icons.Default.Favorite, null) }, label = { NavLabel("Favoritos") })
             }
         }
     ) { pad ->
@@ -147,6 +147,18 @@ fun AppRoot(vm: MainViewModel) {
             }
         }
     }
+}
+
+/**
+ * Rótulo da barra inferior. São seis abas, então cada uma tem pouca largura: a letra é um pouco menor
+ * que o padrão e o texto nunca quebra nem é cortado ("Seguindo", "TV/Rádio" e "Favoritos" cabem inteiros).
+ */
+@Composable
+private fun NavLabel(text: String) {
+    Text(
+        text, maxLines = 1, softWrap = false, overflow = TextOverflow.Visible,
+        fontSize = 10.sp, letterSpacing = 0.sp
+    )
 }
 
 /** Tela cheia: paisagem + esconde as barras do sistema. */
