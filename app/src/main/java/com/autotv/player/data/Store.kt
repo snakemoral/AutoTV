@@ -253,6 +253,28 @@ object Store {
         writeChannels(list)
     }
 
+    private val CHANNEL_ID = Regex("UC[\\w-]{22}")
+
+    /** Código do canal ("UC…") tirado do endereço, ou null. */
+    fun channelId(url: String?): String? = url?.let { CHANNEL_ID.find(it)?.value }
+
+    private fun sameChannel(a: String, b: String): Boolean {
+        if (a == b) return true
+        val id = channelId(a) ?: return false
+        return id == channelId(b)
+    }
+
+    fun isFollowing(url: String?): Boolean = url != null && _following.value.any { sameChannel(it.url, url) }
+
+    /** Põe ou tira o canal da lista de seguidos do app. */
+    fun setFollowing(channel: Channel, on: Boolean) = synchronized(lock) {
+        if (on) {
+            if (!isFollowing(channel.url)) follow(channel)
+        } else {
+            _following.value.filter { sameChannel(it.url, channel.url) }.forEach { unfollow(it.url) }
+        }
+    }
+
     fun unfollow(url: String) = synchronized(lock) {
         val list = _following.value.filterNot { it.url == url }
         _following.value = list

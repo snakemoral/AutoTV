@@ -41,6 +41,8 @@ class MainViewModel : ViewModel() {
     val ytResults = MutableStateFlow<List<Item>>(emptyList())
     /** Termo da busca atual; nulo = mostrando a página inicial. */
     val resultsFor = MutableStateFlow<String?>(null)
+    /** Título da lista de resultados quando ela não é uma busca (ex.: vídeos de um canal). */
+    val resultsTitle = MutableStateFlow<String?>(null)
     val homeSection = MutableStateFlow(HomeSection.TRENDING)
     val feed = MutableStateFlow<Pair<HomeSection, List<Item>>?>(null)
     val followingFeed = MutableStateFlow<List<Item>>(emptyList())
@@ -66,6 +68,11 @@ class MainViewModel : ViewModel() {
     }
 
     fun clearMessage() { message.value = null }
+
+    init {
+        // Avisos do player (ex.: falha ao curtir) aparecem como as outras mensagens do app.
+        viewModelScope.launch { PlayerHub.notice.collect { message.value = it } }
+    }
 
     fun play(items: List<Item>, index: Int) = PlayerHub.play(items, index)
     fun toggleFavorite(item: Item) = Store.toggleFavorite(item)
@@ -138,11 +145,20 @@ class MainViewModel : ViewModel() {
             YouTube.looksLikeLink(text) ->
                 task({ YouTube.itemFromLink(text) }) { PlayerHub.play(listOf(it), 0) }
             else ->
-                task({ YouTube.search(text) }) { ytResults.value = it; resultsFor.value = text }
+                task({ YouTube.search(text) }) { ytResults.value = it; resultsFor.value = text; resultsTitle.value = null }
         }
     }
 
-    fun clearResults() { resultsFor.value = null; ytResults.value = emptyList() }
+    fun clearResults() { resultsFor.value = null; resultsTitle.value = null; ytResults.value = emptyList() }
+
+    /** Mostra os vídeos de um canal na aba Início. */
+    fun openChannel(channel: Channel) {
+        task({ YouTube.channelVideos(channel) }) {
+            ytResults.value = it
+            resultsFor.value = channel.name
+            resultsTitle.value = "Canal: ${channel.name}"
+        }
+    }
 
     /** Categoria escolhida em "Em alta" (nulo = tudo). */
     val trendingCategory = MutableStateFlow<String?>(null)

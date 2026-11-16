@@ -16,6 +16,9 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import com.autotv.player.R
 import com.autotv.player.data.Prefs
+import com.autotv.player.data.YouTube
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.autotv.player.player.PlayerHub
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.drop
@@ -35,7 +38,16 @@ class PlayerScreen(ctx: CarContext) : Screen(ctx) {
 
     private val advanced = Prefs.carAdvancedUi
     private val client: CarSurface.Client =
-        if (advanced) PresentationClient(carContext) { c, display -> CarPlayerPresentation(c, display) { screenManager.pop() } }
+        if (advanced) PresentationClient(carContext) { c, display -> CarPlayerPresentation(
+            c, display,
+            onBack = { screenManager.pop() },
+            // Toque na foto do canal: abre a lista de vídeos dele (o áudio do vídeo atual continua).
+            onOpenChannel = { channel ->
+                screenManager.push(videoList(carContext, channel.name) {
+                    withContext(Dispatchers.IO) { YouTube.channelVideos(channel) }
+                })
+            }
+        ) }
         else RawVideoClient()
 
     init {

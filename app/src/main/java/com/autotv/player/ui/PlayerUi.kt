@@ -50,7 +50,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.layout.ContentScale
+import coil.compose.AsyncImage
+import com.autotv.player.data.Channel
 import com.autotv.player.data.Item
+import com.autotv.player.data.Kind
+import com.autotv.player.data.VideoDetails
+import com.autotv.player.data.compactCount
 import com.autotv.player.player.Option
 import com.autotv.player.player.PlayerHub
 
@@ -266,32 +276,126 @@ private fun OptionList(options: List<Option>, onPick: (String) -> Unit) {
     }
 }
 
-/** Player em tamanho normal (16:9) com a barra de informações embaixo. */
+/**
+ * Player em tamanho normal (16:9) e, embaixo, as informações do vídeo:
+ * título (toque para ver a descrição), canal (toque para ver os vídeos dele), inscrição e gostei / não gostei.
+ */
 @Composable
-fun PlayerPanel(vm: MainViewModel, item: Item, onFullscreen: () -> Unit) {
+fun PlayerPanel(vm: MainViewModel, item: Item, onFullscreen: () -> Unit, onOpenChannel: () -> Unit) {
     val favs by vm.favorites.collectAsState()
-    val following by vm.following.collectAsState()
+    val signedIn by vm.signedIn.collectAsState()
+    val details by PlayerHub.details.collectAsState()
+    val rating by PlayerHub.rating.collectAsState()
+    val subscribed by PlayerHub.subscribed.collectAsState()
     val isFav = favs.any { it.id == item.id }
-    val isFollowing = vm.isFollowing(item.channelUrl, following)
+    val isYoutube = item.kind == Kind.YOUTUBE
+    val channelName = details?.channelName ?: item.group
+    val channelUrl = details?.channelUrl ?: item.channelUrl
+    var showDescription by remember(item.id) { mutableStateOf(false) }
 
     Column(Modifier.fillMaxWidth().background(Color.Black)) {
         PlayerSurface(item, false, onFullscreen, Modifier.fillMaxWidth().aspectRatio(16f / 9f))
-        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
+        Row(Modifier.fillMaxWidth().padding(start = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(
+                Modifier.weight(1f).clickable(enabled = isYoutube) { showDescription = true }.padding(vertical = 6.dp)
+            ) {
                 Text(item.title, maxLines = 2, overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.titleSmall, color = Color.White)
-                item.group?.let {
+                if (!isYoutube) item.group?.let {
                     Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
                 }
-            }
-            if (item.channelUrl != null) {
-                TextButton(onClick = { vm.toggleFollow(item) }) { Text(if (isFollowing) "Seguindo" else "Seguir") }
             }
             IconButton(onClick = { vm.toggleFavorite(item) }) {
                 Icon(if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "Favorito", tint = Color.White)
             }
             TextButton(onClick = { PlayerHub.stop() }) { Text("✕") }
         }
+        if (isYoutube) {
+            Row(
+                Modifier.fillMaxWidth().padding(start = 12.dp, end = 8.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    Modifier.weight(1f).clip(RoundedCornerShape(8.dp)).clickable(enabled = channelUrl != null) {
+                        channelUrl?.let { vm.openChannel(Channel(it, channelName ?: "Canal")); onOpenChannel() }
+                    },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(Modifier.size(36.dp).clip(CircleShape).background(Color(0xFF333333))) {
+                        details?.avatar?.let {
+                            AsyncImage(model = it, contentDescription = "Canal",
+                                modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                        }
+                    }
+                    Column(Modifier.padding(start = 8.dp)) {
+                        Text(channelName ?: "Canal", maxLines = 1, overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodyMedium, color = Color.White)
+                        val subs = details?.subscribers ?: -1
+                        if (subs >= 0) {
+                            Text("${compactCount(subs)} inscritos", maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
+                        }
+                    }
+                }
+                if (channelUrl != null) {
+                    InfoPill(
+                        when {
+                            signedIn -> if (subscribed) "Inscrito" else "Inscrever-se"
+                            else -> if (subscribed) "Seguindo" else "Seguir"
+                        },
+                        selected = subscribed
+                    ) { PlayerHub.toggleSubscribe() }
+                }
+                val likes = details?.likes ?: -1
+                InfoPill("👍" + if (likes >= 0) " ${compactCount(likes)}" else "", selected = rating > 0) { PlayerHub.rate(1) }
+                InfoPill("👎", selected = rating < 0) { PlayerHub.rate(-1) }
+            }
+        }
     }
+
+    if (showDescription) DescriptionDialog(item, details) { showDescription = false }
+}
+
+/** Botão em forma de pílula; [selected] deixa em destaque. */
+@Composable
+private fun InfoPill(text: String, selected: Boolean, onClick: () -> Unit) {
+    Text(
+        text, maxLines = 1,
+        color = if (selected) Color.Black else Color.White,
+        style = MaterialTheme.typography.labelLarge,
+        modifier = Modifier.padding(start = 6.dp)
+            .clip(RoundedCornerShape(18.dp))
+            .background(if (selected) Color.White else Color(0xFF2A2A2A))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+    )
+}
+
+/** Descrição do vídeo: título, canal, visualizações, data e o texto. */
+@Composable
+private fun DescriptionDialog(item: Item, details: VideoDetails?, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(item.title, style = MaterialTheme.typography.titleMedium) },
+        text = {
+            Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                if (details == null) {
+                    Text("Carregando as informações do vídeo…")
+                } else {
+                    val facts = listOfNotNull(
+                        details.channelName,
+                        details.views.takeIf { it >= 0 }?.let { "${compactCount(it)} visualizações" },
+                        details.uploaded
+                    )
+                    if (facts.isNotEmpty()) {
+                        Text(facts.joinToString(" • "), style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(bottom = 10.dp))
+                    }
+                    Text(details.description.ifBlank { "Este vídeo não tem descrição." })
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Fechar") } }
+    )
 }

@@ -134,7 +134,7 @@ fun AppRoot(vm: MainViewModel) {
         }
     ) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
-            if (current != null) PlayerPanel(vm, current) { fullscreen = true }
+            if (current != null) PlayerPanel(vm, current, onFullscreen = { fullscreen = true }, onOpenChannel = { tab = 0 })
             if (busy) CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally).padding(8.dp))
             when (tab) {
                 0 -> HomeTab(vm)
@@ -175,6 +175,7 @@ fun HomeTab(vm: MainViewModel) {
     var query by rememberSaveable { mutableStateOf("") }
     val results by vm.ytResults.collectAsState()
     val resultsFor by vm.resultsFor.collectAsState()
+    val resultsTitle by vm.resultsTitle.collectAsState()
     val section by vm.homeSection.collectAsState()
     val feed by vm.feed.collectAsState()
     val history by vm.history.collectAsState()
@@ -196,7 +197,7 @@ fun HomeTab(vm: MainViewModel) {
 
         if (resultsFor != null) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Resultados para \"$resultsFor\"", Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                Text(resultsTitle ?: "Resultados para \"$resultsFor\"", Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis,
                     style = MaterialTheme.typography.titleSmall)
                 TextButton(onClick = { vm.clearResults() }) { Text("Limpar") }
             }

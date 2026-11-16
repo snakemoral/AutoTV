@@ -41,6 +41,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 
 /** Uma opção de qualidade, áudio ou legenda para mostrar nos menus. */
@@ -81,6 +82,17 @@ object PlayerHub {
     /** Momento em que o sistema pausou sozinho (saída de áudio desconectada ou outro app tomou o áudio). */
     private var autoPausedAt = 0L
     private var lastNetwork: Network? = null
+
+    /** Canal, descrição e contagens do vídeo do YouTube atual (chegam depois que o vídeo é encontrado). */
+    val details = MutableStateFlow<com.autotv.player.data.VideoDetails?>(null)
+    /** Marcação do vídeo atual na conta: 1 = gostei, -1 = não gostei, 0 = nada. */
+    val rating = MutableStateFlow(0)
+    /** true se a conta é inscrita no canal do vídeo atual (sem conta: se o canal é seguido no app). */
+    val subscribed = MutableStateFlow(false)
+    /** Avisos curtos para mostrar ao usuário (ex.: falha ao curtir). */
+    val notice = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 8)
+    /** Marcações feitas neste app, para quando o YouTube não informa a marcação atual. */
+    private val localRatings = HashMap<String, Int>()
 
     val qualityOptions = MutableStateFlow<List<Option>>(emptyList())
     val audioOptions = MutableStateFlow<List<Option>>(emptyList())
@@ -310,7 +322,80 @@ object PlayerHub {
         loading.value = false
         failed = false
         yt = null
+        details.value = null
         clearOptions()
+    }
+
+    // ---- canal, curtir e inscrição ----
+
+    /** Canal do vídeo atual, ou null se não é do YouTube / ainda não se sabe. */
+    fun currentChannel(): com.autotv.player.data.Channel? {
+        val item = nowPlaying.value ?: return null
+        val url = details.value?.channelUrl ?: item.channelUrl ?: return null
+        return com.autotv.player.data.Channel(url, details.value?.channelName ?: item.group ?: "Canal")
+    }
+
+    private fun isCurrent(videoId: String) = nowPlaying.value?.let { Store.youtubeId(it) } == videoId
+
+    /** Lê da conta se o vídeo já foi curtido e se o canal já é assinado. */
+    private fun loadAccountState(videoId: String) {
+        if (!com.autotv.player.data.Account.signedIn.value) return
+        scope.launch {
+            val state = withContext(Dispatchers.IO) {
+                runCatching { com.autotv.player.data.Account.videoState(videoId) }.getOrNull()
+            } ?: return@launch
+            if (!isCurrent(videoId)) return@launch
+            state.rating?.let { rating.value = it }
+            state.subscribed?.let { subscribed.value = it }
+        }
+    }
+
+    /** Gostei (1) ou não gostei (-1). Tocar de novo na mesma opção tira a marcação. Precisa da conta Google. */
+    fun rate(value: Int) {
+        val item = nowPlaying.value ?: return
+        val id = Store.youtubeId(item) ?: return
+        if (!com.autotv.player.data.Account.signedIn.value) {
+            notice.tryEmit("Para curtir, entre com a conta Google (aba Seguindo, no celular)")
+            return
+        }
+        val before = rating.value
+        val target = if (before == value) 0 else value
+        rating.value = target
+        localRatings[id] = target
+        scope.launch {
+            val error = withContext(Dispatchers.IO) {
+                runCatching { com.autotv.player.data.Account.rate(id, target) }.exceptionOrNull()
+            } ?: return@launch
+            localRatings[id] = before
+            if (isCurrent(id)) rating.value = before
+            notice.tryEmit("Não foi possível registrar no YouTube: ${error.message ?: error.javaClass.simpleName}")
+        }
+    }
+
+    /**
+     * Inscreve-se no canal do vídeo atual ou cancela a inscrição. Com a conta Google conectada vale para
+     * a conta do YouTube; sem conta, o canal só entra na lista "Seguindo" do app.
+     */
+    fun toggleSubscribe() {
+        val channel = currentChannel() ?: return
+        val videoId = nowPlaying.value?.let { Store.youtubeId(it) }
+        val on = !subscribed.value
+        subscribed.value = on
+        Store.setFollowing(channel, on)
+        if (!com.autotv.player.data.Account.signedIn.value) return
+        val channelId = Store.channelId(channel.url)
+        if (channelId == null) {
+            notice.tryEmit("Canal ${if (on) "seguido" else "removido"} só no app: não foi possível identificar o canal na conta")
+            return
+        }
+        scope.launch {
+            val error = withContext(Dispatchers.IO) {
+                runCatching { com.autotv.player.data.Account.setSubscribed(channelId, on) }.exceptionOrNull()
+            } ?: return@launch
+            Store.setFollowing(channel, !on)
+            if (videoId != null && isCurrent(videoId)) subscribed.value = !on
+            notice.tryEmit("Não foi possível ${if (on) "inscrever" else "cancelar a inscrição"} no YouTube: ${error.message ?: error.javaClass.simpleName}")
+        }
     }
 
     // ---- posição ----
@@ -522,6 +607,9 @@ object PlayerHub {
         loading.value = true
         yt = null
         isLive.value = false
+        details.value = null
+        rating.value = Store.youtubeId(item)?.let { localRatings[it] } ?: 0
+        subscribed.value = Store.isFollowing(item.channelUrl)
         clearOptions()
         // Limpa escolhas de trilhas do vídeo anterior; legendas começam desligadas nas trilhas HLS/M3U.
         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
@@ -545,6 +633,9 @@ object PlayerHub {
                     Kind.YOUTUBE -> {
                         val m = YouTube.resolveAsync(item.url)
                         setupYoutube(m)
+                        details.value = m.details
+                        m.details?.channelUrl?.let { subscribed.value = Store.isFollowing(it) }
+                        Store.youtubeId(item)?.let { loadAccountState(it) }
                         val from = if (m.isLive) 0L else resumePosition(item)
                         applyYt(keepPosition = false, startMs = from)
                         tracking = true

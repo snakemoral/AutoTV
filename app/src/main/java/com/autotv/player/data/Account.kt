@@ -169,6 +169,58 @@ object Account {
         return JSONObject(text)
     }
 
+    // ------------------------------------------------------------------ curtir e inscrever-se
+
+    /** O que a conta já fez com o vídeo: [rating] 1 = gostei, -1 = não gostei, 0 = nada; null = não informado. */
+    class VideoState(val rating: Int?, val subscribed: Boolean?)
+
+    private fun findString(node: Any?, key: String): String? {
+        when (node) {
+            is JSONObject -> {
+                (node.opt(key) as? String)?.let { return it }
+                val names = node.keys()
+                while (names.hasNext()) findString(node.opt(names.next()), key)?.let { return it }
+            }
+            is JSONArray -> for (i in 0 until node.length()) findString(node.opt(i), key)?.let { return it }
+        }
+        return null
+    }
+
+    /** Lê se a conta já curtiu o vídeo e se já é inscrita no canal dele. */
+    fun videoState(videoId: String): VideoState {
+        val json = innertube("next", JSONObject().put("videoId", videoId))
+        val rating = when (findString(json, "likeStatus")) {
+            "LIKE" -> 1
+            "DISLIKE" -> -1
+            "INDIFFERENT" -> 0
+            else -> null
+        }
+        val buttons = ArrayList<JSONObject>()
+        collect(json, "subscribeButtonRenderer", buttons)
+        val subscribed = buttons.firstOrNull { it.has("subscribed") }?.optBoolean("subscribed")
+        return VideoState(rating, subscribed)
+    }
+
+    /** Marca o vídeo na conta: 1 = gostei, -1 = não gostei, 0 = tira a marcação. */
+    fun rate(videoId: String, rating: Int) {
+        val endpoint = when {
+            rating > 0 -> "like/like"
+            rating < 0 -> "like/dislike"
+            else -> "like/removelike"
+        }
+        innertube(endpoint, JSONObject().put("target", JSONObject().put("videoId", videoId)))
+    }
+
+    /** Inscreve a conta no canal ([channelId] = "UC…") ou cancela a inscrição. */
+    fun setSubscribed(channelId: String, on: Boolean) {
+        innertube(
+            if (on) "subscription/subscribe" else "subscription/unsubscribe",
+            JSONObject()
+                .put("channelIds", JSONArray().put(channelId))
+                .put("params", if (on) "EgIIAhgA" else "CgIIAhgA")
+        )
+    }
+
     // ------------------------------------------------------------------ histórico de exibição
 
     /**

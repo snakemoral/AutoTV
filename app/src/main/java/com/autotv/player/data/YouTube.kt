@@ -49,7 +49,8 @@ data class YtMedia(
     val subs: List<SubOpt>,
     val durationSec: Long,
     /** Manifesto DASH montado pelo app (vídeos gravados): permite qualidade automática. */
-    val dash: String? = null
+    val dash: String? = null,
+    val details: VideoDetails? = null
 )
 
 data class Category(val id: String, val title: String, val kiosk: String? = null, val query: String? = null)
@@ -225,6 +226,42 @@ object YouTube {
         return items
     }
 
+    /** Vídeos mais recentes de um canal (aba "Vídeos"). BLOQUEANTE. */
+    fun channelVideos(ch: Channel): List<Item> {
+        val info = ChannelInfo.getInfo(ch.url)
+        val tab = info.tabs.firstOrNull { it.contentFilters.contains(ChannelTabs.VIDEOS) }
+            ?: error("Este canal não tem a aba de vídeos")
+        val name = info.name?.takeIf { it.isNotBlank() } ?: ch.name
+        val items = ChannelTabInfo.getInfo(ServiceList.YouTube, tab).relatedItems.filterIsInstance<StreamInfoItem>().map {
+            val item = toItem(it)
+            // Na página do canal o YouTube nem sempre repete o nome do canal em cada vídeo.
+            item.copy(group = item.group ?: name, channelUrl = item.channelUrl ?: ch.url)
+        }
+        if (items.isEmpty()) error("O YouTube não devolveu vídeos deste canal")
+        return items
+    }
+
+    private fun detailsOf(info: StreamInfo): VideoDetails {
+        val raw = info.description?.content.orEmpty()
+        val text = if (info.description?.type == org.schabi.newpipe.extractor.stream.Description.HTML) {
+            android.text.Html.fromHtml(raw, android.text.Html.FROM_HTML_MODE_LEGACY).toString()
+        } else raw
+        val uploaded = runCatching {
+            info.uploadDate?.instant?.atZone(java.time.ZoneId.systemDefault())
+                ?.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+        }.getOrNull() ?: info.textualUploadDate?.takeIf { it.isNotBlank() }
+        return VideoDetails(
+            channelName = info.uploaderName?.takeIf { it.isNotBlank() },
+            channelUrl = info.uploaderUrl?.takeIf { it.isNotBlank() },
+            avatar = info.uploaderAvatars?.maxByOrNull { it.width }?.url,
+            description = text.trim(),
+            likes = info.likeCount,
+            views = info.viewCount,
+            subscribers = info.uploaderSubscriberCount,
+            uploaded = uploaded
+        )
+    }
+
     fun itemFromLink(url: String): Item {
         val info = StreamInfo.getInfo(url.trim())
         val live = info.streamType == StreamType.LIVE_STREAM || info.streamType == StreamType.AUDIO_LIVE_STREAM
@@ -289,7 +326,8 @@ object YouTube {
 
         if (hls == null && videos.isEmpty() && muxed == null) error("Nenhum stream reproduzível encontrado para este vídeo")
         val dash = if (live) null else runCatching { buildDash(info.duration, videoOnly, audioStreams, subs) }.getOrNull()
-        return YtMedia(info.name, live, if (live || (videos.isEmpty() && muxed == null)) hls else null, muxed, videos, audios, subs, info.duration, dash)
+        return YtMedia(info.name, live, if (live || (videos.isEmpty() && muxed == null)) hls else null, muxed, videos, audios, subs, info.duration, dash,
+            runCatching { detailsOf(info) }.getOrNull())
     }
 
     private fun esc(s: String) = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")

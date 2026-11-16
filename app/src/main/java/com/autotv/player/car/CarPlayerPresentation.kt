@@ -30,7 +30,12 @@ import androidx.media3.common.text.CueGroup
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.SubtitleView
 import com.autotv.player.R
+import com.autotv.player.data.Channel
+import com.autotv.player.data.Kind
 import com.autotv.player.data.Prefs
+import com.autotv.player.data.Thumbs
+import com.autotv.player.data.compactCount
+import kotlinx.coroutines.withContext
 import com.autotv.player.data.formatDuration
 import com.autotv.player.player.Option
 import com.autotv.player.player.PlayerHub
@@ -52,7 +57,8 @@ import kotlin.math.roundToInt
 class CarPlayerPresentation(
     ctx: Context,
     display: Display,
-    private val onBack: () -> Unit
+    private val onBack: () -> Unit,
+    private val onOpenChannel: (Channel) -> Unit
 ) : Presentation(ctx, display), SurfaceUi {
 
     private val handler = Handler(Looper.getMainLooper())
@@ -86,6 +92,19 @@ class CarPlayerPresentation(
     private lateinit var settingsList: LinearLayout
     private lateinit var settingsTabs: List<TextView>
     private lateinit var settingsPageLabel: TextView
+
+    private lateinit var avatarView: ImageView
+    private lateinit var likePill: TextView
+    private lateinit var dislikePill: TextView
+    private lateinit var subPill: TextView
+    private lateinit var description: FrameLayout
+    private lateinit var descTitle: TextView
+    private lateinit var descFacts: TextView
+    private lateinit var descText: TextView
+    private lateinit var descScroll: android.widget.ScrollView
+    private lateinit var noticeView: TextView
+    private var descriptionOpen = false
+    private var hideNotice: Runnable? = null
 
     private var controlsVisible = true
     private var settingsOpen = false
@@ -129,10 +148,14 @@ class CarPlayerPresentation(
 
         jobs += scope.launch { PlayerHub.nowPlaying.collect { item ->
             titleView.text = item?.title.orEmpty()
-            channelView.text = item?.group.orEmpty()
-            channelView.visibility = if (item?.group.isNullOrBlank()) View.GONE else View.VISIBLE
             updateTransportButtons()
+            if (descriptionOpen) closeDescription()
         } }
+        jobs += scope.launch {
+            combine(PlayerHub.nowPlaying, PlayerHub.details, PlayerHub.rating, PlayerHub.subscribed) { _, _, _, _ -> }
+                .collect { updateVideoInfo() }
+        }
+        jobs += scope.launch { PlayerHub.notice.collect { showNotice(it) } }
         jobs += scope.launch { PlayerHub.status.collect { s ->
             statusOverlay.text = s.orEmpty()
             statusOverlay.visibility = if (s.isNullOrBlank()) View.GONE else View.VISIBLE
@@ -153,7 +176,7 @@ class CarPlayerPresentation(
         val tick = object : Runnable {
             override fun run() {
                 updateProgress()
-                if (controlsVisible && !settingsOpen && PlayerHub.isPlaying.value &&
+                if (controlsVisible && !settingsOpen && !descriptionOpen && PlayerHub.isPlaying.value &&
                     SystemClock.uptimeMillis() - lastInteraction > AUTO_HIDE_MS
                 ) hideControls()
                 handler.postDelayed(this, 500)
@@ -209,7 +232,10 @@ class CarPlayerPresentation(
         root = FrameLayout(context).apply {
             setBackgroundColor(Color.BLACK)
             isClickable = true
-            setOnClickListener { if (settingsOpen) closeSettings() else if (controlsVisible) hideControls() else showControls() }
+            setOnClickListener {
+                if (settingsOpen) closeSettings() else if (descriptionOpen) closeDescription()
+                else if (controlsVisible) hideControls() else showControls()
+            }
         }
 
         videoFrame = AspectRatioFrameLayout(context).apply {
@@ -247,6 +273,19 @@ class CarPlayerPresentation(
         buildBottomBar()
         buildBrightness()
         buildSettings()
+        buildDescription()
+
+        noticeView = TextView(context).apply {
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+            gravity = Gravity.CENTER
+            setPadding(dp(20), dp(10), dp(20), dp(10))
+            background = rounded(0xE6202024.toInt(), dp(24))
+            visibility = View.GONE
+        }
+        root.addView(noticeView, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM).apply {
+            bottomMargin = dp(140); leftMargin = dp(40); rightMargin = dp(40)
+        })
     }
 
     private fun rounded(color: Int, radius: Int) = GradientDrawable().apply {
@@ -298,7 +337,21 @@ class CarPlayerPresentation(
         }
         bar.addView(pill("‹  Lista") { onBack() })
 
-        val titles = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        // Foto do canal: toque para ver os vídeos dele.
+        avatarView = ImageView(context).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0xFF333333.toInt()) }
+            clipToOutline = true
+            visibility = View.GONE
+            setOnClickListener { kick(); PlayerHub.currentChannel()?.let { onOpenChannel(it) } }
+        }
+        bar.addView(avatarView, LinearLayout.LayoutParams(dp(52), dp(52)).apply { leftMargin = dp(14) })
+
+        // Título e canal: toque para ver a descrição do vídeo.
+        val titles = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setOnClickListener { kick(); openDescription() }
+        }
         titleView = TextView(context).apply {
             setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
@@ -374,6 +427,15 @@ class CarPlayerPresentation(
         listOf(qualityPill, audioPill, subsPill).forEach {
             pills.addView(it, LinearLayout.LayoutParams(-2, -2).apply { setMargins(0, 0, dp(10), 0) })
         }
+        // À direita: gostei, não gostei e inscrição (só em vídeos do YouTube).
+        pills.addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
+        likePill = pill("👍") { PlayerHub.rate(1) }
+        dislikePill = pill("👎") { PlayerHub.rate(-1) }
+        subPill = pill("Inscrever-se") { PlayerHub.toggleSubscribe() }
+        listOf(likePill, dislikePill, subPill).forEach {
+            it.maxLines = 1
+            pills.addView(it, LinearLayout.LayoutParams(-2, -2).apply { setMargins(dp(10), 0, 0, 0) })
+        }
         bar.addView(pills)
         controlsContent.addView(bar, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
     }
@@ -421,6 +483,11 @@ class CarPlayerPresentation(
 
     /** No carro o dedo arrastado chega como "rolagem": arrastar para cima/baixo ajusta o brilho. */
     override fun onScroll(distanceX: Float, distanceY: Float) {
+        if (descriptionOpen) {
+            // Com a descrição aberta, arrastar rola o texto.
+            descScroll.scrollBy(0, distanceY.roundToInt())
+            return
+        }
         if (settingsOpen || !::brightness.isInitialized) return
         if (kotlin.math.abs(distanceY) < kotlin.math.abs(distanceX)) return
         showControls()
@@ -543,6 +610,157 @@ class CarPlayerPresentation(
             else -> PlayerHub.selectSubtitle(opt.id)
         }
         closeSettings()
+    }
+
+    // ---- canal, gostei / não gostei, inscrição e descrição ----
+
+    private fun selectable(view: TextView, selected: Boolean) {
+        view.background = rounded(if (selected) 0xFFFFFFFF.toInt() else 0x77000000, dp(24))
+        view.setTextColor(if (selected) Color.BLACK else Color.WHITE)
+    }
+
+    private fun updateVideoInfo() {
+        val item = PlayerHub.nowPlaying.value
+        val details = PlayerHub.details.value
+        val youtube = item?.kind == Kind.YOUTUBE
+
+        val channel = details?.channelName ?: item?.group
+        val subs = details?.subscribers ?: -1
+        channelView.text = listOfNotNull(channel, if (subs >= 0) "${compactCount(subs)} inscritos" else null).joinToString("  •  ")
+        channelView.visibility = if (channelView.text.isNullOrBlank()) View.GONE else View.VISIBLE
+
+        val hasChannel = youtube && PlayerHub.currentChannel() != null
+        avatarView.visibility = if (hasChannel) View.VISIBLE else View.GONE
+        val avatar = details?.avatar
+        if (avatar == null) {
+            avatarView.setImageDrawable(null)
+            avatarView.tag = null
+        } else if (avatarView.tag != avatar) {
+            avatarView.tag = avatar
+            avatarView.setImageDrawable(null)
+            scope.launch {
+                val bmp = withContext(Dispatchers.IO) { Thumbs.load(avatar, 160) }
+                if (bmp != null && avatarView.tag == avatar) avatarView.setImageBitmap(bmp)
+            }
+        }
+
+        val rating = PlayerHub.rating.value
+        val likes = details?.likes ?: -1
+        likePill.text = if (likes >= 0) "👍 ${compactCount(likes)}" else "👍"
+        selectable(likePill, rating > 0)
+        selectable(dislikePill, rating < 0)
+        val subscribed = PlayerHub.subscribed.value
+        val signedIn = com.autotv.player.data.Account.signedIn.value
+        subPill.text = when {
+            signedIn -> if (subscribed) "Inscrito" else "Inscrever-se"
+            else -> if (subscribed) "Seguindo" else "Seguir"
+        }
+        selectable(subPill, subscribed)
+        likePill.visibility = if (youtube) View.VISIBLE else View.GONE
+        dislikePill.visibility = if (youtube) View.VISIBLE else View.GONE
+        subPill.visibility = if (hasChannel) View.VISIBLE else View.GONE
+
+        if (descriptionOpen) fillDescription()
+    }
+
+    private fun showNotice(text: String) {
+        noticeView.text = text
+        noticeView.visibility = View.VISIBLE
+        hideNotice?.let { handler.removeCallbacks(it) }
+        val hide = Runnable { noticeView.visibility = View.GONE }
+        hideNotice = hide
+        handler.postDelayed(hide, 4000)
+    }
+
+    private fun buildDescription() {
+        description = FrameLayout(context).apply {
+            visibility = View.GONE
+            setBackgroundColor(0xAA000000.toInt())
+            isClickable = true
+            setOnClickListener { closeDescription() }
+        }
+        val card = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            background = rounded(0xF2202024.toInt(), dp(20))
+            setPadding(dp(18), dp(14), dp(18), dp(12))
+            isClickable = true
+        }
+        descTitle = TextView(context).apply {
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        }
+        descFacts = TextView(context).apply {
+            setTextColor(0xFFFF8FA3.toInt())
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        }
+        descText = TextView(context).apply {
+            setTextColor(0xEEFFFFFF.toInt())
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+            setLineSpacing(0f, 1.15f)
+        }
+        descScroll = android.widget.ScrollView(context).apply {
+            isVerticalScrollBarEnabled = true
+            addView(descText, ViewGroup.LayoutParams(-1, -2))
+        }
+        card.addView(descTitle)
+        card.addView(descFacts, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
+        card.addView(descScroll, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(10); bottomMargin = dp(8) })
+
+        // No carro só chegam toques e arrastos: os botões rolam o texto de página em página.
+        val pager = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        val up = pill("▲") { descScroll.smoothScrollBy(0, -(descScroll.height * 0.8f).roundToInt()) }
+        val down = pill("▼") { descScroll.smoothScrollBy(0, (descScroll.height * 0.8f).roundToInt()) }
+        val close = pill("Fechar") { closeDescription() }
+        pager.addView(up)
+        pager.addView(down, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(10) })
+        pager.addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
+        pager.addView(close)
+        card.addView(pager)
+
+        description.addView(card, FrameLayout.LayoutParams(0, -1, Gravity.CENTER).apply { setMargins(0, dp(24), 0, dp(24)) })
+        root.addView(description, FrameLayout.LayoutParams(-1, -1))
+    }
+
+    private fun fillDescription() {
+        val item = PlayerHub.nowPlaying.value
+        val details = PlayerHub.details.value
+        descTitle.text = item?.title.orEmpty()
+        val facts = listOfNotNull(
+            details?.channelName ?: item?.group,
+            details?.views?.takeIf { it >= 0 }?.let { "${compactCount(it)} visualizações" },
+            details?.uploaded
+        )
+        descFacts.text = facts.joinToString("  •  ")
+        descFacts.visibility = if (facts.isEmpty()) View.GONE else View.VISIBLE
+        descText.text = when {
+            item?.kind != Kind.YOUTUBE -> "Este conteúdo não tem descrição."
+            details == null -> "Carregando as informações do vídeo…"
+            details.description.isBlank() -> "Este vídeo não tem descrição."
+            else -> details.description
+        }
+    }
+
+    private fun openDescription() {
+        if (settingsOpen) return
+        descriptionOpen = true
+        val card = description.getChildAt(0)
+        card.layoutParams = (card.layoutParams as FrameLayout.LayoutParams).apply {
+            width = (root.width * 0.8f).roundToInt().coerceAtLeast(dp(320))
+        }
+        fillDescription()
+        descScroll.scrollTo(0, 0)
+        description.visibility = View.VISIBLE
+    }
+
+    private fun closeDescription() {
+        descriptionOpen = false
+        description.visibility = View.GONE
+        kick()
     }
 
     // ---- estado dos controles ----

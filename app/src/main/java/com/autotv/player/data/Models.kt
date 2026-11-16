@@ -49,6 +49,36 @@ fun youtubeItem(
     channelUrl: String? = null
 ) = Item("y$url", title, url, uploader?.takeIf { it.isNotBlank() }, Kind.YOUTUBE, thumb, live, durationSec, channelUrl)
 
+/** Informações do vídeo do YouTube mostradas junto do player (canal, descrição, contagens). */
+data class VideoDetails(
+    val channelName: String?,
+    val channelUrl: String?,
+    /** Foto do canal. */
+    val avatar: String?,
+    val description: String,
+    /** Contagens; -1 = o YouTube não informou. */
+    val likes: Long,
+    val views: Long,
+    val subscribers: Long,
+    /** Data de publicação já formatada, ou null. */
+    val uploaded: String?
+)
+
+/** "950", "12,3 mil", "1,2 mi", "3 bi". Vazio se o número é desconhecido (negativo). */
+fun compactCount(n: Long): String {
+    fun short(v: Double): String {
+        val text = if (v >= 100) "%.0f".format(java.util.Locale.US, v) else "%.1f".format(java.util.Locale.US, v)
+        return text.removeSuffix(".0").replace('.', ',')
+    }
+    return when {
+        n < 0 -> ""
+        n < 1_000 -> n.toString()
+        n < 1_000_000 -> short(n / 1_000.0) + " mil"
+        n < 1_000_000_000 -> short(n / 1_000_000.0) + " mi"
+        else -> short(n / 1_000_000_000.0) + " bi"
+    }
+}
+
 /** "3:05" ou "1:02:03". Valores negativos viram "0:00". */
 fun formatDuration(sec: Long): String {
     val t = if (sec < 0) 0 else sec
