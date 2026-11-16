@@ -17,6 +17,7 @@ import com.autotv.player.R
 import com.autotv.player.data.Account
 import com.autotv.player.data.HistorySync
 import com.autotv.player.data.Item
+import com.autotv.player.data.Radio
 import com.autotv.player.data.LocalVideos
 import com.autotv.player.data.Store
 import com.autotv.player.data.YouTube
@@ -86,6 +87,7 @@ class HubScreen(ctx: CarContext) : Screen(ctx) {
         tabs += Chip("following", "Seguindo", section == "following")
         tabs += Chip("live", "Ao vivo", section == "live")
         tabs += Chip("history", "Histórico", section == "history")
+        tabs += Chip("radio", "Rádio", section == "radio")
         tabs += Chip("local", "Celular", section == "local")
         tabs += Chip("tv", "TV")
         tabs += Chip("web", "Web")
@@ -98,6 +100,11 @@ class HubScreen(ctx: CarContext) : Screen(ctx) {
             "trending" -> {
                 filters += Chip("all", "Tudo", filter() == "all")
                 YouTube.CATEGORIES.filter { it.id != "live" }.forEach { filters += Chip(it.id, it.title, filter() == it.id) }
+            }
+            "radio" -> Radio.GENRES.forEach { (tag, label) ->
+                // "all" é o filtro padrão das abas; aqui equivale às mais ouvidas.
+                val id = tag.ifBlank { "all" }
+                filters += Chip(id, label, filter() == id)
             }
             "following" -> if (raw?.let { YouTube.canFilterFollowing(it) } == true) {
                 YouTube.FOLLOWING_FILTERS.forEach { (id, label) -> filters += Chip(id, label, filter() == id) }
@@ -168,6 +175,7 @@ class HubScreen(ctx: CarContext) : Screen(ctx) {
                     "following" -> withContext(Dispatchers.IO) { Account.followingItems(force) }
                     "live" -> withContext(Dispatchers.IO) { YouTube.kiosk("live") }
                     "shorts" -> withContext(Dispatchers.IO) { YouTube.shorts() }
+                    "radio" -> withContext(Dispatchers.IO) { Radio.stations(if (f == "all") "" else f, force) }
                     "history" -> {
                         // Com a conta conectada, traz antes o que foi visto no celular e na TV.
                         HistorySync.sync(force)

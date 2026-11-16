@@ -55,6 +55,11 @@ class HomeScreen(ctx: CarContext) : PagedScreen(ctx, "AutoTV", isRoot = true, en
         if (all.size == 1) playlistEntry(all[0]).onClick(s)
         else s.screenManager.push(PagedScreen(s.carContext, "TV (IPTV)") { Store.playlists.value.map { playlistEntry(it) } })
     }
+    list += Entry("Rádios online", "As mais ouvidas do Brasil") { s ->
+        s.screenManager.push(PagedScreen(s.carContext, "Rádios online", loader = {
+            itemEntries(withContext(Dispatchers.IO) { com.autotv.player.data.Radio.stations() })
+        }))
+    }
     list += Entry("Vídeos do celular", "Download, Filmes e outras pastas") { s ->
         val app = s.carContext.applicationContext
         s.screenManager.push(videoList(s.carContext, "Vídeos do celular") {

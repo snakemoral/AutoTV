@@ -1,4 +1,4 @@
-# AutoTV (v0.7.1)
+# AutoTV (v0.8.0)
 
 Player de YouTube, TV por lista (IPTV/M3U), vídeos do celular e navegador de internet para Android,
 com tela própria no Android Auto.
@@ -28,7 +28,7 @@ Para voltar a uma versão mais antiga, desinstale o AutoTV antes de instalar o A
   começado (pelo Histórico ou por qualquer outra aba), ele volta do ponto em que parou.
 
 **No carro (Android Auto)**
-- Tela inicial com abas: Em alta, Shorts, Seguindo, Ao vivo, Histórico, Celular, TV, Web, Favoritos e Buscar.
+- Tela inicial com abas: Em alta, Shorts, Seguindo, Ao vivo, Histórico, Rádio, Celular, TV, Web, Favoritos e Buscar.
 - Listas de vídeo com miniaturas grandes, filtros e botão de atualizar.
 - Player desenhado pelo app: botões na tela, barra de progresso, ±10 s, brilho, qualidade, áudio e legendas.
 - Navegador de internet, com digitação pelo teclado do Android Auto.
@@ -42,6 +42,12 @@ Em Seguindo > "Entrar com Google" o app mostra um código para digitar em google
 método das TVs). A senha e a verificação em duas etapas ficam no navegador; o app guarda só uma chave do
 YouTube, cifrada, que pode ser revogada em myaccount.google.com/permissions. Sem login, dá para importar
 o `subscriptions.csv` (ou o .zip) do Google Takeout.
+
+**Rádios online**
+Rádios do Brasil mais ouvidas, com filtro por gênero (notícias, esportes, sertanejo, pop, rock, MPB, gospel
+e outros). No celular ficam em TV/Rádio > Rádio, onde também dá para buscar uma rádio pelo nome; no carro,
+na aba Rádio. O coração guarda a rádio nos Favoritos. O catálogo é o Radio Browser (radio-browser.info),
+aberto e mantido pela comunidade.
 
 **Canal, inscrição, gostei e descrição**
 Junto do vídeo do YouTube (no celular e na tela do carro) aparecem a foto e o nome do canal, o botão de

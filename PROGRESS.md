@@ -1,5 +1,5 @@
 # Estado do projeto (para retomar após limite de uso)
-Última atualização: 2026-11-16 (v0.7.1).
+Última atualização: 2026-11-16 (v0.8.0).
 
 - Repositório: github.com/snakemoral/AutoTV, branch main. Cada push compila sozinho (GitHub Actions) e
   publica o APK na Release "latest". Trabalhar no clone em /home/claude/autotv-repo.
@@ -43,7 +43,7 @@
 - Dúvida em aberto: o usuário não viu qualidades acima de 1080p60 na v0.4.1. Causa não confirmada (ou o
   aparelho não declara suporte, ou o extrator não devolve esses streams). Pedir o nome de um vídeo de teste.
 - Confirmado pelo usuário: tela dividida do Android Auto funciona (AutoTV no painel grande + cartão de música).
-- NÃO testado em aparelho: v0.5.0, v0.5.1, v0.6.0, v0.7.0 e v0.7.1. O login e a leitura das inscrições da conta dependem de
+- NÃO testado em aparelho: v0.5.0 em diante (o usuário confirmou 0.7.1 funcionando no aparelho dele). O login e a leitura das inscrições da conta dependem de
   respostas do YouTube que não foi possível conferir daqui.
 - v0.6.0: histórico sincronizado com a conta do YouTube (data/HistorySync.kt), só com login.
   Leitura: Account.watchHistory() (browse FEhistory como TVHTML5; a porcentagem vista vem de
@@ -68,6 +68,11 @@
   transportControlsRenderer (mesma ordem do SmartTube/MediaServiceCore). (2) Aba Shorts (celular e carro):
   YouTube.shorts() usa reel/reel_item_watch + reel/reel_watch_sequence como cliente WEB, títulos pelo
   oEmbed, e cai para busca "#shorts" se o feed falhar. Não conferido contra o YouTube daqui.
+- v0.8.0: rádios online (data/Radio.kt) pelo catálogo aberto Radio Browser
+  (/json/stations/search, servidores de1/de2/nl1/at1/all.api.radio-browser.info, com troca automática).
+  Cada rádio vira um Item do tipo STREAM (toca pelo mesmo caminho da IPTV; Favoritos funcionam).
+  Celular: aba "TV/Rádio" (TvRadioTab) com gêneros e busca por nome. Carro: aba "Rádio" no HubScreen
+  com gêneros (sem busca) e entrada "Rádios online" no modo simples. Não conferido contra o catálogo daqui.
 - Publicação (pedido do usuário em 2026-11-13, vale sempre): toda versão nova deve ser publicada no main
   sem perguntar, e as antigas continuam disponíveis. O workflow cria uma Release numerada por versão
   (tag vX.Y.Z, arquivo AutoTV-X.Y.Z.apk, nunca apagada) e recria a "latest". Por isso, subir o

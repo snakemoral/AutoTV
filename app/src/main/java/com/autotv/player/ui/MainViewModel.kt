@@ -89,6 +89,46 @@ class MainViewModel : ViewModel() {
         }
     }
 
+    // ---- Rádios online ----
+    val radioStations = MutableStateFlow<List<Item>>(emptyList())
+    /** Gênero escolhido ("" = mais ouvidas). */
+    val radioGenre = MutableStateFlow("")
+    /** Busca em andamento na aba Rádio; nulo = mostrando o gênero. */
+    val radioQuery = MutableStateFlow<String?>(null)
+    val radioLoading = MutableStateFlow(false)
+    private var radioJob: Job? = null
+
+    private fun loadRadio(block: () -> List<Item>) {
+        radioJob?.cancel()
+        radioLoading.value = true
+        radioJob = viewModelScope.launch {
+            try {
+                radioStations.value = withContext(Dispatchers.IO) { block() }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                radioStations.value = emptyList()
+                message.value = e.message ?: e.javaClass.simpleName
+            } finally {
+                radioLoading.value = false
+            }
+        }
+    }
+
+    fun selectRadioGenre(tag: String, force: Boolean = false) {
+        if (!force && radioQuery.value == null && radioGenre.value == tag && radioStations.value.isNotEmpty()) return
+        radioGenre.value = tag
+        radioQuery.value = null
+        loadRadio { com.autotv.player.data.Radio.stations(tag, force) }
+    }
+
+    fun searchRadio(text: String) {
+        val query = text.trim()
+        if (query.isEmpty()) { selectRadioGenre(radioGenre.value, force = radioQuery.value != null); return }
+        radioQuery.value = query
+        loadRadio { com.autotv.player.data.Radio.search(query) }
+    }
+
     // ---- Listas de TV ----
     private fun buildPlaylist(id: String, name: String, source: String, text: String): Playlist {
         val items = M3uParser.parse(text).map { streamItem(it.name, it.url, it.group, it.logo) }

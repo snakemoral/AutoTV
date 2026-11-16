@@ -123,7 +123,7 @@ fun AppRoot(vm: MainViewModel) {
                 NavigationBarItem(selected = tab == 1, onClick = { tab = 1 },
                     icon = { Icon(Icons.Default.Person, null) }, label = { Text("Seguindo", maxLines = 1) })
                 NavigationBarItem(selected = tab == 2, onClick = { tab = 2 },
-                    icon = { Icon(Icons.Default.Menu, null) }, label = { Text("TV") })
+                    icon = { Icon(Icons.Default.Menu, null) }, label = { Text("TV/Rádio", maxLines = 1) })
                 NavigationBarItem(selected = tab == 3, onClick = { tab = 3 },
                     icon = { Icon(Icons.Default.PlayArrow, null) }, label = { Text("Baixados", maxLines = 1) })
                 NavigationBarItem(selected = tab == 4, onClick = { tab = 4 },
@@ -139,7 +139,7 @@ fun AppRoot(vm: MainViewModel) {
             when (tab) {
                 0 -> HomeTab(vm)
                 1 -> FollowingTab(vm)
-                2 -> PlaylistsTab(vm)
+                2 -> TvRadioTab(vm)
                 3 -> LocalTab(vm)
                 4 -> BrowserTab(browser)
                 else -> LibraryTab(vm)
@@ -503,5 +503,70 @@ fun LibraryTab(vm: MainViewModel) {
             Text("Nenhum favorito ainda. Toque no coração de um canal ou vídeo.", Modifier.padding(24.dp))
         }
         MediaList(vm, favs)
+    }
+}
+
+// ---------------------------------------------------------------- TV e Rádio
+
+/** Aba que junta as listas de TV (IPTV) e as rádios online. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TvRadioTab(vm: MainViewModel) {
+    var radio by rememberSaveable { mutableStateOf(false) }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(selected = !radio, onClick = { radio = false }, label = { Text("TV") })
+            FilterChip(selected = radio, onClick = { radio = true }, label = { Text("Rádio") })
+        }
+        if (radio) RadioTab(vm) else PlaylistsTab(vm)
+    }
+}
+
+/** Rádios online: as mais ouvidas do Brasil, filtro por gênero e busca pelo nome. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RadioTab(vm: MainViewModel) {
+    val stations by vm.radioStations.collectAsState()
+    val genre by vm.radioGenre.collectAsState()
+    val searching by vm.radioQuery.collectAsState()
+    val loading by vm.radioLoading.collectAsState()
+    var query by rememberSaveable { mutableStateOf("") }
+
+    LaunchedEffect(Unit) { if (stations.isEmpty()) vm.selectRadioGenre(genre) }
+
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            OutlinedTextField(
+                value = query, onValueChange = { query = it }, singleLine = true,
+                placeholder = { Text("Buscar rádio pelo nome") },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { vm.searchRadio(query) }),
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(onClick = { vm.searchRadio(query) }) { Icon(Icons.Default.Search, "Buscar") }
+        }
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            com.autotv.player.data.Radio.GENRES.forEach { (tag, label) ->
+                FilterChip(
+                    selected = searching == null && genre == tag,
+                    onClick = { query = ""; vm.selectRadioGenre(tag, force = genre == tag) },
+                    label = { Text(label) }
+                )
+            }
+        }
+        searching?.let {
+            Text("Resultados para \"$it\"", Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                style = MaterialTheme.typography.titleSmall)
+        }
+        if (stations.isEmpty()) {
+            Text(
+                if (loading) "Carregando rádios…" else "Nenhuma rádio para mostrar. Toque em um gênero para tentar de novo.",
+                Modifier.padding(16.dp), color = MaterialTheme.colorScheme.outline
+            )
+        }
+        MediaList(vm, stations)
     }
 }
