@@ -123,7 +123,8 @@ fun AppRoot(vm: MainViewModel) {
                 NavigationBarItem(selected = tab == 1, onClick = { tab = 1 },
                     icon = { Icon(Icons.Default.Person, null) }, label = { Text("Seguindo", maxLines = 1) })
                 NavigationBarItem(selected = tab == 2, onClick = { tab = 2 },
-                    icon = { Icon(Icons.Default.Menu, null) }, label = { Text("TV/Rádio", maxLines = 1) })
+                    icon = { Icon(Icons.Default.Menu, null) }, // softWrap = false: sem isso o texto quebra depois da barra e "Rádio" some na segunda linha.
+                    label = { Text("TV/Rádio", maxLines = 1, softWrap = false) })
                 NavigationBarItem(selected = tab == 3, onClick = { tab = 3 },
                     icon = { Icon(Icons.Default.PlayArrow, null) }, label = { Text("Baixados", maxLines = 1) })
                 NavigationBarItem(selected = tab == 4, onClick = { tab = 4 },
