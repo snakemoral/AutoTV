@@ -1,5 +1,5 @@
 # Estado do projeto (para retomar após limite de uso)
-Última atualização: 2026-11-16 (v0.7.0).
+Última atualização: 2026-11-16 (v0.7.1).
 
 - Repositório: github.com/snakemoral/AutoTV, branch main. Cada push compila sozinho (GitHub Actions) e
   publica o APK na Release "latest". Trabalhar no clone em /home/claude/autotv-repo.
@@ -43,7 +43,7 @@
 - Dúvida em aberto: o usuário não viu qualidades acima de 1080p60 na v0.4.1. Causa não confirmada (ou o
   aparelho não declara suporte, ou o extrator não devolve esses streams). Pedir o nome de um vídeo de teste.
 - Confirmado pelo usuário: tela dividida do Android Auto funciona (AutoTV no painel grande + cartão de música).
-- NÃO testado em aparelho: v0.5.0, v0.5.1, v0.6.0 e v0.7.0. O login e a leitura das inscrições da conta dependem de
+- NÃO testado em aparelho: v0.5.0, v0.5.1, v0.6.0, v0.7.0 e v0.7.1. O login e a leitura das inscrições da conta dependem de
   respostas do YouTube que não foi possível conferir daqui.
 - v0.6.0: histórico sincronizado com a conta do YouTube (data/HistorySync.kt), só com login.
   Leitura: Account.watchHistory() (browse FEhistory como TVHTML5; a porcentagem vista vem de
@@ -62,6 +62,12 @@
   Celular: PlayerPanel (PlayerUi.kt); a lista do canal abre em Início (vm.openChannel, resultsTitle).
   Carro (só interface avançada): foto do canal e botões em CarPlayerPresentation; a lista do canal é
   empilhada por PlayerScreen. NÃO conferido contra o YouTube daqui (sem conta).
+- v0.7.1: (1) correção do 👍 que aparecia marcado sem ter sido dado: Account.videoState pegava a
+  primeira palavra "likeStatus" de qualquer lugar da resposta. Agora Account.ratingIn lê só
+  videoMetadataRenderer.likeStatus (ou likeButton.likeButtonRenderer) e, na falta, os botões de
+  transportControlsRenderer (mesma ordem do SmartTube/MediaServiceCore). (2) Aba Shorts (celular e carro):
+  YouTube.shorts() usa reel/reel_item_watch + reel/reel_watch_sequence como cliente WEB, títulos pelo
+  oEmbed, e cai para busca "#shorts" se o feed falhar. Não conferido contra o YouTube daqui.
 - Publicação (pedido do usuário em 2026-11-13, vale sempre): toda versão nova deve ser publicada no main
   sem perguntar, e as antigas continuam disponíveis. O workflow cria uma Release numerada por versão
   (tag vX.Y.Z, arquivo AutoTV-X.Y.Z.apk, nunca apagada) e recria a "latest". Por isso, subir o

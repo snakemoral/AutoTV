@@ -1,4 +1,4 @@
-# AutoTV (v0.7.0)
+# AutoTV (v0.7.1)
 
 Player de YouTube, TV por lista (IPTV/M3U), vídeos do celular e navegador de internet para Android,
 com tela própria no Android Auto.
@@ -15,7 +15,7 @@ Para voltar a uma versão mais antiga, desinstale o AutoTV antes de instalar o A
 ## O que tem
 
 **No celular**
-- **Início:** Em alta (com categorias e botão de atualizar), Ao vivo, Histórico, busca e link colado ou
+- **Início:** Em alta (com categorias e botão de atualizar), Shorts, Ao vivo, Histórico, busca e link colado ou
   compartilhado do YouTube.
 - **Seguindo:** vídeos dos canais em que você é inscrito, pela conta Google ou por arquivo do Google Takeout.
 - **TV:** listas M3U/IPTV.
@@ -28,7 +28,7 @@ Para voltar a uma versão mais antiga, desinstale o AutoTV antes de instalar o A
   começado (pelo Histórico ou por qualquer outra aba), ele volta do ponto em que parou.
 
 **No carro (Android Auto)**
-- Tela inicial com abas: Em alta, Seguindo, Ao vivo, Histórico, Celular, TV, Web, Favoritos e Buscar.
+- Tela inicial com abas: Em alta, Shorts, Seguindo, Ao vivo, Histórico, Celular, TV, Web, Favoritos e Buscar.
 - Listas de vídeo com miniaturas grandes, filtros e botão de atualizar.
 - Player desenhado pelo app: botões na tela, barra de progresso, ±10 s, brilho, qualidade, áudio e legendas.
 - Navegador de internet, com digitação pelo teclado do Android Auto.

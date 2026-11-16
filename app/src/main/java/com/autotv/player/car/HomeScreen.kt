@@ -46,6 +46,9 @@ class HomeScreen(ctx: CarContext) : PagedScreen(ctx, "AutoTV", isRoot = true, en
     list += Entry("YouTube", "Em alta, ao vivo, categorias e busca") { s ->
         s.screenManager.push(videoList(s.carContext, "YouTube") { YouTube.homeFeed() })
     }
+    list += Entry("Shorts", "Vídeos curtos do YouTube") { s ->
+        s.screenManager.push(videoList(s.carContext, "Shorts") { withContext(Dispatchers.IO) { YouTube.shorts() } })
+    }
     val playlists = Store.playlists.value
     list += Entry("TV (IPTV)", if (playlists.isEmpty()) "Adicione listas no app do celular" else "${playlists.size} listas") { s ->
         val all = Store.playlists.value

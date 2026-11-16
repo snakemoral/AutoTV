@@ -110,6 +110,102 @@ object YouTube {
         return youtubeItem(i.name, i.url, i.uploaderName, bestThumb(i.thumbnails), live, if (live) -1 else i.duration, i.uploaderUrl)
     }
 
+    // ------------------------------------------------------------------ Shorts
+
+    private const val WEB_VERSION = "2.20250312.01.00"
+
+    /** Consulta ao feed de Shorts do site do YouTube (sem conta). */
+    private fun reel(endpoint: String, body: org.json.JSONObject): org.json.JSONObject {
+        val context = org.json.JSONObject().put("client", org.json.JSONObject()
+            .put("clientName", "WEB").put("clientVersion", WEB_VERSION).put("hl", "pt").put("gl", "BR"))
+        val (code, text) = Http.postJson(
+            "https://www.youtube.com/youtubei/v1/reel/$endpoint?prettyPrint=false",
+            body.put("context", context).toString(),
+            mapOf(
+                "User-Agent" to Http.UA_WEB,
+                "Origin" to "https://www.youtube.com",
+                "X-YouTube-Client-Name" to "1",
+                "X-YouTube-Client-Version" to WEB_VERSION
+            )
+        )
+        if (code != 200) error("HTTP $code")
+        return org.json.JSONObject(text)
+    }
+
+    private fun continuationOf(o: org.json.JSONObject, key: String): String? =
+        o.optString(key).takeIf { it.isNotBlank() }
+            ?: o.optJSONObject("continuationEndpoint")?.optJSONObject("continuationCommand")?.optString("token")?.takeIf { it.isNotBlank() }
+
+    /** Códigos (e miniaturas) dos próximos Shorts do feed, na ordem em que o YouTube os serve. */
+    private fun shortsFeedIds(): LinkedHashMap<String, String?> {
+        val out = LinkedHashMap<String, String?>()
+        fun add(endpoint: org.json.JSONObject?) {
+            val id = endpoint?.optString("videoId")?.takeIf { it.length == 11 } ?: return
+            val thumbs = endpoint.optJSONObject("thumbnail")?.optJSONArray("thumbnails")
+            out.putIfAbsent(id, thumbs?.optJSONObject(thumbs.length() - 1)?.optString("url")?.takeIf { it.isNotBlank() })
+        }
+        val first = reel("reel_item_watch", org.json.JSONObject()
+            .put("disablePlayerResponse", true)
+            .put("inputType", "REEL_WATCH_INPUT_TYPE_SEEDLESS")
+            .put("params", "CA8%3D"))
+        add(first.optJSONObject("replacementEndpoint")?.optJSONObject("reelWatchEndpoint"))
+        var token = continuationOf(first, "sequenceContinuation")
+        repeat(2) {
+            val t = token ?: return@repeat
+            val page = runCatching { reel("reel_watch_sequence", org.json.JSONObject().put("sequenceParams", t)) }.getOrNull()
+            token = null
+            if (page != null) {
+                val entries = page.optJSONArray("entries")
+                if (entries != null) {
+                    for (i in 0 until entries.length()) {
+                        add(entries.optJSONObject(i)?.optJSONObject("command")?.optJSONObject("reelWatchEndpoint"))
+                    }
+                }
+                token = continuationOf(page, "continuation")
+            }
+        }
+        return out
+    }
+
+    /** Título e canal de um vídeo pelo serviço público de incorporação do YouTube (oEmbed). */
+    private fun shortItem(id: String, thumb: String?): Item {
+        val url = "https://www.youtube.com/watch?v=$id"
+        val info = runCatching {
+            org.json.JSONObject(Http.getWeb("https://www.youtube.com/oembed?format=json&url=" + java.net.URLEncoder.encode(url, "UTF-8")))
+        }.getOrNull()
+        return youtubeItem(
+            info?.optString("title")?.takeIf { it.isNotBlank() } ?: "Short",
+            url,
+            info?.optString("author_name"),
+            thumb ?: "https://i.ytimg.com/vi/$id/hqdefault.jpg",
+            false, 0,
+            info?.optString("author_url")?.takeIf { it.isNotBlank() }
+        )
+    }
+
+    /**
+     * Shorts: o feed do YouTube (não personalizado). Se o feed não responder, cai para uma busca por
+     * vídeos curtos. Cada chamada traz uma leva nova. BLOQUEANTE.
+     */
+    fun shorts(): List<Item> {
+        val ids = runCatching { shortsFeedIds() }.getOrDefault(LinkedHashMap())
+        if (ids.size >= 3) {
+            val gate = Semaphore(8)
+            return runBlocking(Dispatchers.IO) {
+                ids.entries.map { (id, thumb) -> async { gate.withPermit { shortItem(id, thumb) } } }.awaitAll()
+            }
+        }
+        val extractor = ServiceList.YouTube.getSearchExtractor("#shorts")
+        extractor.forceLocalization(Localization("pt", "BR"))
+        extractor.forceContentCountry(ContentCountry("BR"))
+        extractor.fetchPage()
+        val found = extractor.initialPage.items.filterIsInstance<StreamInfoItem>()
+            .filter { it.isShortFormContent || it.duration in 1L..75L }
+            .map { toItem(it) }
+        if (found.isEmpty()) error("O YouTube não devolveu Shorts agora. Tente de novo.")
+        return found
+    }
+
     fun search(query: String): List<Item> {
         val extractor = ServiceList.YouTube.getSearchExtractor(query)
         // Pede os resultados em português (sem isso o YouTube pode devolver títulos traduzidos para o inglês).

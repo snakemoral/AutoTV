@@ -93,6 +93,8 @@ object PlayerHub {
     val notice = kotlinx.coroutines.flow.MutableSharedFlow<String>(extraBufferCapacity = 8)
     /** Marcações feitas neste app, para quando o YouTube não informa a marcação atual. */
     private val localRatings = HashMap<String, Int>()
+    /** Quando cada marcação foi feita aqui (o YouTube pode demorar um pouco a refletir a mudança). */
+    private val localRatingAt = HashMap<String, Long>()
 
     val qualityOptions = MutableStateFlow<List<Option>>(emptyList())
     val audioOptions = MutableStateFlow<List<Option>>(emptyList())
@@ -345,7 +347,10 @@ object PlayerHub {
                 runCatching { com.autotv.player.data.Account.videoState(videoId) }.getOrNull()
             } ?: return@launch
             if (!isCurrent(videoId)) return@launch
-            state.rating?.let { rating.value = it }
+            // O que o YouTube informa vale mais que a memória do app, a não ser que a marcação tenha
+            // acabado de ser feita aqui.
+            val justRated = localRatingAt[videoId]?.let { android.os.SystemClock.elapsedRealtime() - it < 120_000 } ?: false
+            if (!justRated) state.rating?.let { rating.value = it; localRatings[videoId] = it }
             state.subscribed?.let { subscribed.value = it }
         }
     }
@@ -362,11 +367,13 @@ object PlayerHub {
         val target = if (before == value) 0 else value
         rating.value = target
         localRatings[id] = target
+        localRatingAt[id] = android.os.SystemClock.elapsedRealtime()
         scope.launch {
             val error = withContext(Dispatchers.IO) {
                 runCatching { com.autotv.player.data.Account.rate(id, target) }.exceptionOrNull()
             } ?: return@launch
             localRatings[id] = before
+            localRatingAt.remove(id)
             if (isCurrent(id)) rating.value = before
             notice.tryEmit("Não foi possível registrar no YouTube: ${error.message ?: error.javaClass.simpleName}")
         }

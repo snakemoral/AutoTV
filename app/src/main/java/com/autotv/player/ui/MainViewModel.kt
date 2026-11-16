@@ -28,7 +28,7 @@ import kotlinx.coroutines.withContext
 import java.util.UUID
 
 enum class HomeSection(val label: String) {
-    TRENDING("Em alta"), LIVE("Ao vivo"), HISTORY("Histórico")
+    TRENDING("Em alta"), SHORTS("Shorts"), LIVE("Ao vivo"), HISTORY("Histórico")
 }
 
 class MainViewModel : ViewModel() {
@@ -176,6 +176,7 @@ class MainViewModel : ViewModel() {
         // O YouTube acabou com a página "Em alta" antiga: aqui ela é a mistura das categorias em alta
         // (música, jogos, filmes, ao vivo), a mesma lista que o carro mostra em "YouTube".
         if (section == HomeSection.LIVE) task({ YouTube.kiosk("live") }) { feed.value = section to it }
+        else if (section == HomeSection.SHORTS) task({ YouTube.shorts() }) { feed.value = section to it }
         else {
             val cat = YouTube.CATEGORIES.firstOrNull { it.id == trendingCategory.value }
             task({

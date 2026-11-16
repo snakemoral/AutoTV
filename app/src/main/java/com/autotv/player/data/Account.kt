@@ -174,14 +174,66 @@ object Account {
     /** O que a conta já fez com o vídeo: [rating] 1 = gostei, -1 = não gostei, 0 = nada; null = não informado. */
     class VideoState(val rating: Int?, val subscribed: Boolean?)
 
-    private fun findString(node: Any?, key: String): String? {
-        when (node) {
-            is JSONObject -> {
-                (node.opt(key) as? String)?.let { return it }
-                val names = node.keys()
-                while (names.hasNext()) findString(node.opt(names.next()), key)?.let { return it }
+    private fun likeCode(status: String?): Int? = when (status) {
+        "LIKE" -> 1
+        "DISLIKE" -> -1
+        "INDIFFERENT" -> 0
+        else -> null
+    }
+
+    /** Botão dos controles do player de TV: pela lista "buttons" (por tipo) ou pelo campo direto. */
+    private fun controlButton(controls: JSONObject, type: String, direct: String): JSONObject? {
+        val buttons = controls.optJSONArray("buttons")
+        if (buttons != null) {
+            for (i in 0 until buttons.length()) {
+                val b = buttons.optJSONObject(i) ?: continue
+                if (b.optString("type") == type) return b.optJSONObject("button")
             }
-            is JSONArray -> for (i in 0 until node.length()) findString(node.opt(i), key)?.let { return it }
+        }
+        return controls.optJSONObject(direct)
+    }
+
+    /**
+     * Marcação do vídeo na resposta do YouTube. Só vale o estado do PRÓPRIO vídeo, que fica em lugares
+     * certos (dados do vídeo ou botões do player); a palavra "LIKE" aparece em outros pontos da resposta
+     * (por exemplo, no comando que o botão envia) e não pode ser confundida com o estado.
+     */
+    private fun ratingIn(json: JSONObject): Int? {
+        val metas = ArrayList<JSONObject>()
+        collect(json, "videoMetadataRenderer", metas)
+        for (m in metas) {
+            likeCode(m.optString("likeStatus"))?.let { return it }
+            likeCode(m.optJSONObject("likeButton")?.optJSONObject("likeButtonRenderer")?.optString("likeStatus"))?.let { return it }
+        }
+        val controls = ArrayList<JSONObject>()
+        collect(json, "transportControlsRenderer", controls)
+        for (c in controls) {
+            val like = controlButton(c, "TRANSPORT_CONTROLS_BUTTON_TYPE_LIKE_BUTTON", "likeButton")
+            val dislike = controlButton(c, "TRANSPORT_CONTROLS_BUTTON_TYPE_DISLIKE_BUTTON", "dislikeButton")
+            likeCode(like?.optJSONObject("likeButtonRenderer")?.optString("likeStatus"))?.let { return it }
+            val likeToggle = like?.optJSONObject("toggleButtonRenderer")?.takeIf { it.has("isToggled") }
+            val dislikeToggle = dislike?.optJSONObject("toggleButtonRenderer")?.takeIf { it.has("isToggled") }
+            if (likeToggle != null || dislikeToggle != null) {
+                return when {
+                    likeToggle?.optBoolean("isToggled") == true -> 1
+                    dislikeToggle?.optBoolean("isToggled") == true -> -1
+                    else -> 0
+                }
+            }
+        }
+        return null
+    }
+
+    private fun subscribedIn(json: JSONObject): Boolean? {
+        val buttons = ArrayList<JSONObject>()
+        collect(json, "subscribeButtonRenderer", buttons)
+        buttons.firstOrNull { it.has("subscribed") }?.let { return it.optBoolean("subscribed") }
+        val controls = ArrayList<JSONObject>()
+        collect(json, "transportControlsRenderer", controls)
+        for (c in controls) {
+            val toggle = controlButton(c, "TRANSPORT_CONTROLS_BUTTON_TYPE_SUBSCRIBE", "subscribeButton")
+                ?.optJSONObject("toggleButtonRenderer")?.takeIf { it.has("isToggled") }
+            if (toggle != null) return toggle.optBoolean("isToggled")
         }
         return null
     }
@@ -189,16 +241,7 @@ object Account {
     /** Lê se a conta já curtiu o vídeo e se já é inscrita no canal dele. */
     fun videoState(videoId: String): VideoState {
         val json = innertube("next", JSONObject().put("videoId", videoId))
-        val rating = when (findString(json, "likeStatus")) {
-            "LIKE" -> 1
-            "DISLIKE" -> -1
-            "INDIFFERENT" -> 0
-            else -> null
-        }
-        val buttons = ArrayList<JSONObject>()
-        collect(json, "subscribeButtonRenderer", buttons)
-        val subscribed = buttons.firstOrNull { it.has("subscribed") }?.optBoolean("subscribed")
-        return VideoState(rating, subscribed)
+        return VideoState(ratingIn(json), subscribedIn(json))
     }
 
     /** Marca o vídeo na conta: 1 = gostei, -1 = não gostei, 0 = tira a marcação. */

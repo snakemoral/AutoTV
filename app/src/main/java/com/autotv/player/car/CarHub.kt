@@ -82,6 +82,7 @@ class HubScreen(ctx: CarContext) : Screen(ctx) {
         val tabs = ArrayList<Chip>()
         if (PlayerHub.nowPlaying.value != null) tabs += Chip("now", "▶ Tocando")
         tabs += Chip("trending", "Em alta", section == "trending")
+        tabs += Chip("shorts", "Shorts", section == "shorts")
         tabs += Chip("following", "Seguindo", section == "following")
         tabs += Chip("live", "Ao vivo", section == "live")
         tabs += Chip("history", "Histórico", section == "history")
@@ -166,6 +167,7 @@ class HubScreen(ctx: CarContext) : Screen(ctx) {
                     }
                     "following" -> withContext(Dispatchers.IO) { Account.followingItems(force) }
                     "live" -> withContext(Dispatchers.IO) { YouTube.kiosk("live") }
+                    "shorts" -> withContext(Dispatchers.IO) { YouTube.shorts() }
                     "history" -> {
                         // Com a conta conectada, traz antes o que foi visto no celular e na TV.
                         HistorySync.sync(force)
