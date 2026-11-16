@@ -118,7 +118,8 @@ class HubScreen(ctx: CarContext) : Screen(ctx) {
             e != null -> p.showMessage("Não foi possível carregar: $e")
             list == null -> p.showMessage("Carregando…")
             list.isEmpty() -> p.showMessage(if (section == "history") "Nada assistido ainda." else "Nenhum vídeo encontrado")
-            else -> p.showItems(list)
+            // Rádios: uma coluna só, com o logotipo pequeno ao lado do nome.
+            else -> p.showItems(list, compact = section == "radio")
         }
     }
 

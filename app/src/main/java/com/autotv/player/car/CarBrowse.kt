@@ -221,6 +221,7 @@ class CarBrowsePresentation(
     private lateinit var nowPlayingPill: TextView
 
     private var pendingItems: List<Item>? = null
+    private var compact = false
     private var pendingMessage: String? = "Carregando…"
     private var builtFor = -1
 
@@ -285,8 +286,13 @@ class CarBrowsePresentation(
         render()
     }
 
-    fun showItems(items: List<Item>) {
-        pendingItems = items.take(MAX_ITEMS)
+    /**
+     * Mostra a lista. [compact] = uma coluna só, com ícone pequeno e o nome ao lado (como no celular):
+     * usado nas rádios, que têm logotipo em vez de miniatura de vídeo.
+     */
+    fun showItems(items: List<Item>, compact: Boolean = false) {
+        this.compact = compact
+        pendingItems = items.take(if (compact) MAX_COMPACT_ITEMS else MAX_ITEMS)
         pendingMessage = null
         builtFor = -1
         render()
@@ -413,6 +419,17 @@ class CarBrowsePresentation(
         if (builtFor == gridWidth) return
         builtFor = gridWidth
 
+        if (compact) {
+            grid.removeAllViews()
+            for (i in items.indices) {
+                grid.addView(compactRow(items, i, items[i]), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
+            }
+            val y = restoreScroll
+            restoreScroll = 0
+            scroll.post { scroll.scrollTo(0, y) }
+            return
+        }
+
         val cols = (gridWidth / dp(230)).coerceIn(2, 5)
         val gapPx = dp(10)
         val cardW = (gridWidth - gapPx * (cols - 1)) / cols
@@ -432,6 +449,65 @@ class CarBrowsePresentation(
         val y = restoreScroll
         restoreScroll = 0
         scroll.post { scroll.scrollTo(0, y) }
+    }
+
+    /** Linha da lista de uma coluna: ícone pequeno, nome e a linha de detalhe. */
+    private fun compactRow(all: List<Item>, index: Int, item: Item): View {
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = rounded(0xFF1C1C20.toInt(), dp(12))
+            setPadding(dp(10), dp(8), dp(14), dp(8))
+            setOnClickListener { onPick(all, index) }
+        }
+        val icon = FrameLayout(context).apply {
+            background = rounded(0xFF2E2E34.toInt(), dp(10))
+            clipToOutline = true
+        }
+        // Enquanto o logotipo não chega (ou se a rádio não tem um), fica a nota musical.
+        icon.addView(TextView(context).apply {
+            text = "♪"
+            setTextColor(0xFF9A9AA2.toInt())
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+            gravity = Gravity.CENTER
+        }, FrameLayout.LayoutParams(-1, -1))
+        val image = ImageView(context).apply { scaleType = ImageView.ScaleType.FIT_CENTER }
+        icon.addView(image, FrameLayout.LayoutParams(-1, -1))
+        row.addView(icon, LinearLayout.LayoutParams(dp(52), dp(52)))
+
+        val texts = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        texts.addView(TextView(context).apply {
+            text = item.title
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+        })
+        item.group?.takeIf { it.isNotBlank() }?.let { detail ->
+            texts.addView(TextView(context).apply {
+                text = detail
+                setTextColor(0xFFAAAAAA.toInt())
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(2) })
+        }
+        row.addView(texts, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(14) })
+
+        val url = item.thumb?.takeIf { it.isNotBlank() }
+        if (url != null) {
+            fun show(bmp: android.graphics.Bitmap) {
+                image.setBackgroundColor(0xFF2E2E34.toInt()) // cobre a nota musical
+                image.setImageBitmap(bmp)
+            }
+            val ready = Thumbs.cached(url)
+            if (ready != null) show(ready)
+            else scope.launch {
+                val bmp = gate.withPermit { withContext(Dispatchers.IO) { Thumbs.load(url, 160) } }
+                if (bmp != null) show(bmp)
+            }
+        }
+        return row
     }
 
     private fun card(all: List<Item>, index: Int, item: Item, thumbH: Int): View {
@@ -500,5 +576,7 @@ class CarBrowsePresentation(
     private companion object {
         const val BG = 0xFF0F0F0F.toInt()
         const val MAX_ITEMS = 60
+        /** As linhas da lista de uma coluna são leves: cabe a lista inteira de rádios. */
+        const val MAX_COMPACT_ITEMS = 150
     }
 }

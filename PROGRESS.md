@@ -1,5 +1,5 @@
 # Estado do projeto (para retomar após limite de uso)
-Última atualização: 2026-11-16 (v0.8.3).
+Última atualização: 2026-11-16 (v0.8.4; rádios no carro em lista de uma coluna: CarBrowsePresentation.showItems(compact = true)).
 
 - Repositório: github.com/snakemoral/AutoTV, branch main. Cada push compila sozinho (GitHub Actions) e
   publica o APK na Release "latest". Trabalhar no clone em /home/claude/autotv-repo.
