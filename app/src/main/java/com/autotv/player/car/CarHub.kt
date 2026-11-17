@@ -72,7 +72,7 @@ class HubScreen(ctx: CarContext) : Screen(ctx) {
         ).also { push(it) }
     }
 
-    private val ui get() = client.ui as? CarBrowsePresentation
+    private val ui: CarBrowsePresentation? get() = client.ui as? CarBrowsePresentation
 
     init {
         lifecycle.addObserver(object : DefaultLifecycleObserver {
