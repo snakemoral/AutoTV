@@ -508,20 +508,27 @@ class CarPlayerPresentation(
         bar.addView(line)
 
         val pills = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        // À esquerda, qualidade, áudio e legendas ficam num espaço próprio: se não couberem, os textos são
+        // encurtados ali, sem empurrar gostei / não gostei / inscrição para fora da tela.
+        val options = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         qualityPill = pill("Qualidade") { openSettings(0) }
         audioPill = pill("Áudio") { openSettings(1) }
         subsPill = pill("Legendas: desl.") { openSettings(2) }
         listOf(qualityPill, audioPill, subsPill).forEach {
-            pills.addView(it, LinearLayout.LayoutParams(-2, -2).apply { setMargins(0, 0, dp(10), 0) })
+            it.isSingleLine = true
+            it.ellipsize = android.text.TextUtils.TruncateAt.END
+            it.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            it.setPadding(dp(14), dp(9), dp(14), dp(9))
+            options.addView(it, LinearLayout.LayoutParams(-2, -2, 1f).apply { setMargins(0, 0, dp(8), 0) })
         }
+        pills.addView(options, LinearLayout.LayoutParams(0, -2, 1f))
         // À direita: gostei, não gostei e inscrição (só em vídeos do YouTube).
-        pills.addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
         likePill = pill("👍") { PlayerHub.rate(1) }
         dislikePill = pill("👎") { PlayerHub.rate(-1) }
         subPill = pill("Inscrever-se") { PlayerHub.toggleSubscribe() }
         listOf(likePill, dislikePill, subPill).forEach {
-            it.maxLines = 1
-            pills.addView(it, LinearLayout.LayoutParams(-2, -2).apply { setMargins(dp(10), 0, 0, 0) })
+            it.isSingleLine = true
+            pills.addView(it, LinearLayout.LayoutParams(-2, -2).apply { setMargins(dp(8), 0, 0, 0) })
         }
         bar.addView(pills)
         controlsContent.addView(bar, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
@@ -854,9 +861,11 @@ class CarPlayerPresentation(
 
     private fun updatePills(q: List<Option>, a: List<Option>, s: List<Option>) {
         val qSel = q.firstOrNull { it.selected }?.label
-        qualityPill.text = "Qualidade: ${qSel ?: "—"}"
+        qualityPill.text = "Qualidade: ${qSel?.replace("Automático", "Auto") ?: "—"}"
         qualityPill.visibility = if (q.isEmpty()) View.GONE else View.VISIBLE
-        audioPill.text = "Áudio: ${a.firstOrNull { it.selected }?.label ?: "—"}"
+        // Só o idioma ("English (US) original" vira "English"): o resto está na tela de ajustes.
+        val aSel = a.firstOrNull { it.selected }?.label?.substringBefore(" (")?.trim()
+        audioPill.text = "Áudio: ${aSel ?: "—"}"
         audioPill.visibility = if (a.size > 1) View.VISIBLE else View.GONE
         val sSel = s.firstOrNull { it.selected }
         subsPill.text = if (sSel == null || sSel.id == "off") "Legendas: desl." else "Legendas: ${sSel.label}"

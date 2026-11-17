@@ -132,6 +132,9 @@ class VideoBrowseScreen(
 }
 
 /** A interface da lista de vídeos, desenhada numa tela virtual. */
+/** Itens com este começo no id são pastas (grupos de canais da TV), não vídeos. */
+const val GROUP_PREFIX = "grp:"
+
 class CarBrowsePresentation(
     ctx: Context,
     display: Display,
@@ -478,7 +481,11 @@ class CarBrowsePresentation(
         }
         // Enquanto o logotipo não chega (ou se a rádio não tem um), fica a nota musical.
         icon.addView(TextView(context).apply {
-            text = "♪"
+            text = when {
+                item.id.startsWith(GROUP_PREFIX) -> "☰"
+                item.group?.startsWith("Rádio") == true -> "♪"
+                else -> "▶"
+            }
             setTextColor(0xFF9A9AA2.toInt())
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
             gravity = Gravity.CENTER
@@ -589,6 +596,6 @@ class CarBrowsePresentation(
         const val BG = 0xFF0F0F0F.toInt()
         const val MAX_ITEMS = 60
         /** As linhas da lista de uma coluna são leves: cabe a lista inteira de rádios. */
-        const val MAX_COMPACT_ITEMS = 150
+        const val MAX_COMPACT_ITEMS = 400
     }
 }

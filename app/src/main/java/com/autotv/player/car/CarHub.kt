@@ -17,6 +17,7 @@ import com.autotv.player.R
 import com.autotv.player.data.Account
 import com.autotv.player.data.HistorySync
 import com.autotv.player.data.Item
+import com.autotv.player.data.Kind
 import com.autotv.player.data.Radio
 import com.autotv.player.data.LocalVideos
 import com.autotv.player.data.Store
@@ -33,7 +34,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * Tela inicial do carro (modo avançado): abas no topo, todas a um toque, e a lista de vídeos embaixo.
- * Abre em "Em alta". As abas de lista carregam aqui mesmo; TV, Web, Favoritos e Buscar abrem outra tela.
+ * Abre em "Em alta". As abas de lista (inclusive TV) carregam aqui mesmo; Web e Favoritos abrem outra tela.
  */
 class HubScreen(ctx: CarContext) : Screen(ctx) {
     private var section = "trending"
@@ -43,6 +44,9 @@ class HubScreen(ctx: CarContext) : Screen(ctx) {
     private var error: String? = null
     private var job: Job? = null
     private var savedScroll = 0
+    /** Aba TV: lista de canais escolhida e grupo aberto (null = mostrando os grupos). */
+    private var tvList = 0
+    private var tvGroup: String? = null
 
     private val client = PresentationClient(carContext) { c, display ->
         CarBrowsePresentation(
@@ -51,7 +55,15 @@ class HubScreen(ctx: CarContext) : Screen(ctx) {
             onSearch = {},
             onCategories = {},
             onNowPlaying = {},
-            onPick = { list, index -> playAndOpen(list, index) },
+            onPick = { list, index ->
+                val picked = list[index]
+                if (picked.id.startsWith(GROUP_PREFIX)) {
+                    // Aba TV: tocar num grupo mostra os canais dele.
+                    tvGroup = picked.title
+                    savedScroll = 0
+                    ui?.let { push(it) }
+                } else playAndOpen(list, index)
+            },
             hub = true,
             onTab = { id -> openTab(id) },
             onFilter = { id -> pickFilter(id) },
@@ -89,9 +101,11 @@ class HubScreen(ctx: CarContext) : Screen(ctx) {
         tabs += Chip("history", "Histórico", section == "history")
         tabs += Chip("radio", "Rádio", section == "radio")
         tabs += Chip("local", "Celular", section == "local")
-        tabs += Chip("tv", "TV")
+        tabs += Chip("tv", "TV", section == "tv")
         tabs += Chip("web", "Web")
         tabs += Chip("favs", "Favoritos")
+
+        if (section == "tv") { pushTv(p, tabs); return }
 
         val filters = ArrayList<Chip>()
         if (section != "history" || HistorySync.enabled) filters += Chip("refresh", "⟳ Atualizar")
@@ -122,13 +136,49 @@ class HubScreen(ctx: CarContext) : Screen(ctx) {
         }
     }
 
+    /** Aba TV (listas IPTV): grupos e canais em uma coluna, com o logotipo pequeno, como as rádios. */
+    private fun pushTv(p: CarBrowsePresentation, tabs: List<Chip>) {
+        val lists = Store.playlists.value
+        val filters = ArrayList<Chip>()
+        if (tvList !in lists.indices) { tvList = 0; tvGroup = null }
+        if (lists.size > 1) lists.forEachIndexed { i, pl -> filters += Chip("pl:$i", pl.name, i == tvList) }
+        val pl = lists.getOrNull(tvList)
+        if (pl == null) {
+            p.setChips(tabs, filters)
+            p.showMessage("Nenhuma lista de TV. Adicione no app do celular, em TV/Rádio > TV.")
+            return
+        }
+        val groups = pl.items.groupBy { it.group ?: "Sem categoria" }
+        val g = tvGroup?.takeIf { groups.containsKey(it) }
+        if (groups.size > 1 && g == null) {
+            p.setChips(tabs, filters)
+            p.showItems(groups.map { (name, list) ->
+                Item(GROUP_PREFIX + name, name, "", "${list.size} canais", Kind.STREAM)
+            }, compact = true)
+            return
+        }
+        if (g != null) {
+            filters.add(0, Chip("groups", "‹ Grupos"))
+            filters.add(1, Chip("group", g, true))
+        }
+        p.setChips(tabs, filters)
+        val list = if (g == null) pl.items else groups[g].orEmpty()
+        if (list.isEmpty()) p.showMessage("Esta lista está vazia") else p.showItems(list, compact = true)
+    }
+
     private fun openTab(id: String) {
         when (id) {
             "now" -> screenManager.push(PlayerScreen(carContext))
-            "tv" -> {
-                val all = Store.playlists.value
-                if (all.size == 1) playlistEntry(all[0]).onClick(this)
-                else screenManager.push(PagedScreen(carContext, "TV (IPTV)") { Store.playlists.value.map { playlistEntry(it) } })
+            "tv" -> if (section != "tv") {
+                job?.cancel()
+                section = "tv"
+                savedScroll = 0
+                ui?.let { push(it) }
+            } else if (tvGroup != null) {
+                // Tocar em "TV" de novo volta para os grupos.
+                tvGroup = null
+                savedScroll = 0
+                ui?.let { push(it) }
             }
             "web" -> screenManager.push(BrowserScreen(carContext))
             "favs" -> screenManager.push(PagedScreen(carContext, "Favoritos") { itemEntries(Store.favorites.value) })
@@ -142,6 +192,15 @@ class HubScreen(ctx: CarContext) : Screen(ctx) {
 
     private fun pickFilter(id: String) {
         when {
+            section == "tv" -> {
+                when {
+                    id == "groups" -> tvGroup = null
+                    id.startsWith("pl:") -> { tvList = id.removePrefix("pl:").toIntOrNull() ?: 0; tvGroup = null }
+                    else -> return
+                }
+                savedScroll = 0
+                ui?.let { push(it) }
+            }
             id == "refresh" -> load(force = true)
             section == "following" -> {
                 // Filtra a lista que já está carregada.

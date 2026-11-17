@@ -181,7 +181,8 @@ object PlayerHub {
 
             override fun onPlaybackStateChanged(state: Int) {
                 when (state) {
-                    Player.STATE_BUFFERING -> { status.value = "Carregando…"; loading.value = true }
+                    // Carregando: só o círculo girando (o texto é reservado para erros).
+                    Player.STATE_BUFFERING -> { status.value = null; loading.value = true }
                     Player.STATE_READY -> { status.value = null; retries = 0; failed = false; loading.value = false }
                     Player.STATE_ENDED -> {
                         loading.value = false
@@ -212,14 +213,14 @@ object PlayerHub {
                 when {
                     item?.kind == Kind.STREAM && retries < 3 -> {
                         retries++
-                        status.value = "Reconectando ($retries/3)…"
+                        status.value = null
                         loading.value = true
                         scope.launch { delay(2_000); player.prepare() }
                     }
                     item?.kind == Kind.YOUTUBE && retries < 2 -> {
                         // O link do stream pode ter expirado: resolve de novo e continua de onde parou.
                         retries++
-                        status.value = "Reconectando ($retries/2)…"
+                        status.value = null
                         loading.value = true
                         resumeYoutube(item, player.currentPosition)
                     }
@@ -261,7 +262,7 @@ object PlayerHub {
             delay(1_500) // dá tempo de a rede nova estabilizar
             retries = 0
             failed = false
-            status.value = "Reconectando…"
+            status.value = null
             loading.value = true
             val pos = player.currentPosition
             if (item.kind == Kind.YOUTUBE) {
@@ -304,7 +305,7 @@ object PlayerHub {
         retries = 0
         if (failed) {
             failed = false
-            status.value = "Reconectando…"
+            status.value = null
             loading.value = true
             if (item.kind == Kind.YOUTUBE) resumeYoutube(item, player.currentPosition)
             else { player.prepare(); player.playWhenReady = true }
@@ -623,12 +624,14 @@ object PlayerHub {
         Prefs.resumeInCar = false
         job?.cancel()
         netJob?.cancel()
+        // Para o vídeo anterior na hora: o som dele não pode continuar enquanto o novo é procurado.
+        player.stop()
         retries = 0
         failed = false
         nowPlaying.value = item
         if (item.kind == Kind.YOUTUBE) Store.addHistory(item)
         Store.saveSession(queue, index)
-        status.value = "Carregando…"
+        status.value = null
         loading.value = true
         yt = null
         isLive.value = false

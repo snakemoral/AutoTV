@@ -1,5 +1,5 @@
 # Estado do projeto (para retomar após limite de uso)
-Última atualização: 2026-11-17 (v0.8.7).
+Última atualização: 2026-11-17 (v0.8.8).
 
 - Repositório: github.com/snakemoral/AutoTV, branch main. Cada push compila sozinho (GitHub Actions) e
   publica o APK na Release "latest". Trabalhar no clone em /home/claude/autotv-repo.
@@ -94,6 +94,11 @@
   Material) no lugar de "‹ Lista" e "⚙"; PlayerHub.audioOnly (sem faixa de vídeo, ou rádio ao abrir) mostra
   o logotipo grande e o nome no centro, no celular (PlayerUi.kt) e no carro (CarPlayerPresentation.buildArtwork);
   celular não mantém a tela acesa quando o vídeo está no carro (carActive).
+- v0.8.8: aba TV do carro agora é uma aba do HubScreen (pushTv: grupos como itens com id "grp:" e canais em
+  uma coluna; filtros "‹ Grupos" e uma ficha por lista), no lugar das telas nativas do Android Auto.
+  Player do carro: qualidade/áudio/legendas num espaço próprio com texto encurtado (não empurram gostei e
+  inscrição para fora). PlayerHub.start chama player.stop() antes de procurar o novo vídeo (o som do anterior
+  continuava); "Carregando…" e "Reconectando…" não aparecem mais em texto, só o círculo (status = erros).
 - Publicação (pedido do usuário em 2026-11-13, vale sempre): toda versão nova deve ser publicada no main
   sem perguntar, e as antigas continuam disponíveis. O workflow cria uma Release numerada por versão
   (tag vX.Y.Z, arquivo AutoTV-X.Y.Z.apk, nunca apagada) e recria a "latest". Por isso, subir o
