@@ -1,5 +1,5 @@
 # Estado do projeto (para retomar após limite de uso)
-Última atualização: 2026-11-16 (v0.8.4; rádios no carro em lista de uma coluna: CarBrowsePresentation.showItems(compact = true)).
+Última atualização: 2026-11-17 (v0.8.5).
 
 - Repositório: github.com/snakemoral/AutoTV, branch main. Cada push compila sozinho (GitHub Actions) e
   publica o APK na Release "latest". Trabalhar no clone em /home/claude/autotv-repo.
@@ -80,6 +80,10 @@
   o resultado por 30 min (limpo ao trocar de rede; recarga por erro usa fresh = true), YouTube.prefetch
   prepara o próximo da fila 8 s depois de o atual começar e, na abertura do app, o último do histórico
   (isso também baixa o player JS do YouTube, que era o custo da "primeira vez").
+- v0.8.5: (1) celular: tela não apaga enquanto toca (MainActivity.keepScreenOnWhilePlaying, FLAG_KEEP_SCREEN_ON).
+  (2) carro: a faixa de cima que o Android Auto reserva (stable area) só tem o botão dele no canto direito;
+  as abas da tela inicial (CarBrowse.setInsets) e a barra do título do player (CarPlayerPresentation.setInsets)
+  agora sobem para ela e reservam à direita só "top + 8dp". Abas da tela inicial em letra 13sp.
 - Publicação (pedido do usuário em 2026-11-13, vale sempre): toda versão nova deve ser publicada no main
   sem perguntar, e as antigas continuam disponíveis. O workflow cria uma Release numerada por versão
   (tag vX.Y.Z, arquivo AutoTV-X.Y.Z.apk, nunca apagada) e recria a "latest". Por isso, subir o

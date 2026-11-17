@@ -208,7 +208,10 @@ class CarPlayerPresentation(
     /** Área livre (sem barras do carro por cima), em pixels da superfície. */
     override fun setInsets(left: Int, top: Int, right: Int, bottom: Int) {
         if (!::controlsContent.isInitialized) return
-        controlsContent.setPadding(left, top, right, bottom)
+        // A faixa de cima é reservada pelo Android Auto só por causa do botão dele no canto direito:
+        // a barra do título sobe para ela e deixa livre apenas o espaço desse botão.
+        controlsContent.setPadding(left, 0, right, bottom)
+        topBar.setPadding(dp(12), dp(6), dp(12) + if (top > 0) top + dp(8) else 0, dp(28))
         subtitles.setPadding(left, 0, right, maxOf(bottom, dp(24)))
     }
 
@@ -328,6 +331,8 @@ class CarPlayerPresentation(
         intArrayOf(0xCC000000.toInt(), 0x00000000)
     )
 
+    private lateinit var topBar: LinearLayout
+
     private fun buildTopBar() {
         val bar = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -372,6 +377,7 @@ class CarPlayerPresentation(
 
         bar.addView(pill("⚙  Ajustes") { openSettings(0) })
         controlsContent.addView(bar, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
+        topBar = bar
     }
 
     private fun buildCenter() {

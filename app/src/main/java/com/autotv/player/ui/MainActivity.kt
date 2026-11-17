@@ -5,6 +5,12 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
+import android.view.WindowManager
+import androidx.lifecycle.lifecycleScope
+import com.autotv.player.player.PlayerHub
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val vm: MainViewModel by viewModels()
@@ -13,6 +19,22 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null) handleIntent(intent)
         setContent { AutoTvTheme { AppRoot(vm) } }
+        keepScreenOnWhilePlaying()
+    }
+
+    /**
+     * Enquanto um vídeo toca (ou carrega para tocar), a tela do celular não apaga sozinha pelo tempo de
+     * inatividade do Android. Pausado ou parado, volta ao normal.
+     */
+    private fun keepScreenOnWhilePlaying() {
+        lifecycleScope.launch {
+            combine(PlayerHub.isPlaying, PlayerHub.loading, PlayerHub.nowPlaying) { playing, loading, item ->
+                item != null && (playing || loading)
+            }.distinctUntilChanged().collect { on ->
+                if (on) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {

@@ -155,6 +155,9 @@ class CarBrowsePresentation(
     private var tabs: List<Chip> = emptyList()
     private var filters: List<Chip> = emptyList()
     private var chipBox: LinearLayout? = null
+    private var titleBar: LinearLayout? = null
+    /** Largura reservada no alto à direita para o botão do Android Auto (a lupa). */
+    private var stripReserve = 0
     private var filterBox: LinearLayout? = null
     private var restoreScroll = initialScroll
 
@@ -167,10 +170,10 @@ class CarBrowsePresentation(
     private fun chipView(c: Chip, onClick: (String) -> Unit) = TextView(context).apply {
         text = c.label
         setTextColor(if (c.selected) Color.BLACK else Color.WHITE)
-        setTextSize(TypedValue.COMPLEX_UNIT_SP, 15f)
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
         gravity = Gravity.CENTER
-        setPadding(dp(14), dp(8), dp(14), dp(8))
-        background = rounded(if (c.selected) Color.WHITE else 0x33FFFFFF, dp(20))
+        setPadding(dp(11), dp(6), dp(11), dp(6))
+        background = rounded(if (c.selected) Color.WHITE else 0x33FFFFFF, dp(16))
         setOnClickListener { onClick(c.id) }
     }
 
@@ -182,7 +185,7 @@ class CarBrowsePresentation(
         filterBox.removeAllViews()
         val full = root.width - content.paddingLeft - content.paddingRight
         if (full <= 0) return
-        val gap = dp(8)
+        val gap = dp(6)
         fun flow(box: LinearLayout, width: Int, chips: List<Chip>, onClick: (String) -> Unit) {
             var row: LinearLayout? = null
             var used = 0
@@ -193,7 +196,7 @@ class CarBrowsePresentation(
                 val current = row
                 if (current == null || used + gap + w > width) {
                     val r = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
-                    box.addView(r, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
+                    box.addView(r, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(5) })
                     r.addView(v, LinearLayout.LayoutParams(-2, -2))
                     row = r
                     used = w
@@ -203,7 +206,7 @@ class CarBrowsePresentation(
                 }
             }
         }
-        flow(tabBox, full, tabs, onTab)
+        flow(tabBox, full - stripReserve, tabs, onTab)
         flow(filterBox, full - filterBox.paddingRight, filters, onFilter)
     }
 
@@ -255,7 +258,12 @@ class CarBrowsePresentation(
 
     override fun setInsets(left: Int, top: Int, right: Int, bottom: Int) {
         if (!::content.isInitialized) return
-        content.setPadding(left + dp(10), top + dp(6), right + dp(10), bottom)
+        // O Android Auto reserva a faixa de cima inteira por causa do botão dele (a lupa), que fica só no
+        // canto direito. As abas sobem para essa faixa e só deixam livre o espaço do botão.
+        stripReserve = if (top > 0) top + dp(8) else 0
+        content.setPadding(left + dp(10), dp(8), right + dp(10), bottom)
+        chipBox?.setPadding(0, 0, stripReserve, 0)
+        titleBar?.setPadding(0, 0, stripReserve, 0)
         rebuild()
     }
 
@@ -344,6 +352,7 @@ class CarBrowsePresentation(
         bar.addView(pill("Categorias") { onCategories() }, LinearLayout.LayoutParams(gap))
         bar.addView(pill("Buscar") { onSearch() }, LinearLayout.LayoutParams(gap))
         content.addView(bar, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
+        titleBar = bar
 
         val body = FrameLayout(context)
         scroll = ScrollView(context).apply {
