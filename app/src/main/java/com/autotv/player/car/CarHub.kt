@@ -92,7 +92,6 @@ class HubScreen(ctx: CarContext) : Screen(ctx) {
         tabs += Chip("tv", "TV")
         tabs += Chip("web", "Web")
         tabs += Chip("favs", "Favoritos")
-        tabs += Chip("search", "Buscar")
 
         val filters = ArrayList<Chip>()
         if (section != "history" || HistorySync.enabled) filters += Chip("refresh", "⟳ Atualizar")

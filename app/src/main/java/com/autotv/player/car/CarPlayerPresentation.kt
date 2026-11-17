@@ -162,7 +162,8 @@ class CarPlayerPresentation(
         } }
         jobs += scope.launch { PlayerHub.isPlaying.collect {
             playBtn.setImageResource(if (it) R.drawable.ic_pause else R.drawable.ic_play)
-            if (!it) showControls()
+            // Pausado: controles à mostra. Começou a tocar: conta os segundos a partir de agora para escondê-los.
+            if (!it) showControls() else kick()
         } }
         jobs += scope.launch { PlayerHub.loading.collect { spinner.visibility = if (it) View.VISIBLE else View.GONE } }
         jobs += scope.launch {
@@ -211,7 +212,7 @@ class CarPlayerPresentation(
         // A faixa de cima é reservada pelo Android Auto só por causa do botão dele no canto direito:
         // a barra do título sobe para ela e deixa livre apenas o espaço desse botão.
         controlsContent.setPadding(left, 0, right, bottom)
-        topBar.setPadding(dp(12), dp(6), dp(12) + if (top > 0) top + dp(8) else 0, dp(28))
+        topBar.setPadding(dp(12), dp(6), if (top > 0) top + dp(6) else dp(12), dp(28))
         subtitles.setPadding(left, 0, right, maxOf(bottom, dp(24)))
     }
 
@@ -375,7 +376,11 @@ class CarPlayerPresentation(
         titles.addView(channelView)
         bar.addView(titles, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(16), 0, dp(16), 0) })
 
-        bar.addView(pill("⚙  Ajustes") { openSettings(0) })
+        // Só o ícone: sobra mais espaço para o título do vídeo.
+        bar.addView(pill("⚙") { openSettings(0) }.apply {
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
+            setPadding(dp(12), dp(6), dp(12), dp(6))
+        })
         controlsContent.addView(bar, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
         topBar = bar
     }
@@ -829,6 +834,8 @@ class CarPlayerPresentation(
         controls.animate().alpha(0f).setDuration(220).withEndAction {
             if (!controlsVisible) controls.visibility = View.GONE
         }.start()
+        // Garantia: se a animação for interrompida, os controles somem do mesmo jeito.
+        handler.postDelayed({ if (!controlsVisible) { controls.alpha = 0f; controls.visibility = View.GONE } }, 400)
     }
 
     private companion object {

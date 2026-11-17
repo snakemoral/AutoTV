@@ -107,9 +107,25 @@ fun PlayerSurface(
                             PlayerView.ControllerVisibilityListener { v -> controlsVisible = v == View.VISIBLE }
                         )
                         setFullscreenButtonClickListener { toggleFullscreen() }
+                        // Ao abrir um vídeo os controles aparecem "sem prazo" enquanto ele carrega, e às vezes o
+                        // player não trocava para o prazo normal quando começava a tocar. Quando começa a tocar,
+                        // os controles visíveis recebem de novo o prazo de 3 s.
+                        val view = this
+                        val listener = object : androidx.media3.common.Player.Listener {
+                            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                                if (isPlaying) view.postDelayed({
+                                    if (view.player?.isPlaying == true && controlsVisible) view.showController()
+                                }, 250)
+                            }
+                        }
+                        PlayerHub.player.addListener(listener)
+                        tag = listener
                     }
                 },
-                onRelease = { it.player = null }
+                onRelease = {
+                    (it.tag as? androidx.media3.common.Player.Listener)?.let { l -> PlayerHub.player.removeListener(l) }
+                    it.player = null
+                }
             )
             // Brilho da imagem: escurece o vídeo
             if (brightness < 0.999f) {

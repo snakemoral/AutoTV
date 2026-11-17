@@ -171,7 +171,10 @@ class CarBrowserPresentation(
     }
 
     override fun setInsets(left: Int, top: Int, right: Int, bottom: Int) {
-        if (::content.isInitialized) content.setPadding(left, top, right, bottom)
+        if (!::content.isInitialized) return
+        // Como nas outras telas: a barra sobe para a faixa de cima e só deixa livre o canto do botão do Android Auto.
+        content.setPadding(left, 0, right, bottom)
+        bar.setPadding(dp(8), dp(6), dp(8) + if (top > 0) top + dp(4) else 0, dp(6))
     }
 
     override fun dispatchTap(x: Float, y: Float) {

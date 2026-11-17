@@ -56,6 +56,8 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import com.autotv.player.data.YouTube
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -100,6 +102,9 @@ fun AppRoot(vm: MainViewModel) {
         message?.let { snackbar.showSnackbar(it); vm.clearMessage() }
     }
     LaunchedEffect(now) { if (now == null) fullscreen = false }
+    val carActive by PlayerHub.carActive.collectAsState()
+    // Virar o celular para deitado entra na tela cheia; voltar para em pé sai.
+    RotationFullscreen(active = now != null && !carActive, fullscreen = fullscreen) { fullscreen = it }
     val web = browser.value
     val webFullscreen = tab == 4 && web != null && web.siteFullscreen != null
     FullscreenEffect((fullscreen && now != null) || webFullscreen)
@@ -159,6 +164,46 @@ private fun NavLabel(text: String) {
         text, maxLines = 1, softWrap = false, overflow = TextOverflow.Visible,
         fontSize = 10.sp, letterSpacing = 0.sp
     )
+}
+
+/**
+ * Acompanha a posição física do celular (pelo sensor, mesmo com a rotação automática do Android travada):
+ * ao deitar o aparelho com um vídeo aberto, entra na tela cheia; ao colocá-lo em pé, sai.
+ * Só reage quando a posição muda, para não brigar com os botões de entrar e sair da tela cheia.
+ */
+@Composable
+private fun RotationFullscreen(active: Boolean, fullscreen: Boolean, setFullscreen: (Boolean) -> Unit) {
+    val context = LocalContext.current
+    val isFull by rememberUpdatedState(fullscreen)
+    val set by rememberUpdatedState(setFullscreen)
+    DisposableEffect(active) {
+        if (!active) return@DisposableEffect onDispose { }
+        var last = 0 // 0 = ainda não sabe, 1 = em pé, 2 = deitado
+        var pending = 0
+        var pendingSince = 0L
+        val listener = object : android.view.OrientationEventListener(context) {
+            override fun onOrientationChanged(degrees: Int) {
+                if (degrees == ORIENTATION_UNKNOWN) return
+                val state = when {
+                    degrees <= 25 || degrees >= 335 || degrees in 155..205 -> 1
+                    degrees in 65..115 || degrees in 245..295 -> 2
+                    else -> return // inclinado no meio do caminho: espera definir
+                }
+                // A posição precisa ficar firme por meio segundo (evita trocas ao balançar o celular).
+                val now = android.os.SystemClock.uptimeMillis()
+                if (state != pending) { pending = state; pendingSince = now; return }
+                if (now - pendingSince < 500 || state == last) return
+                val first = last == 0
+                last = state
+                when {
+                    state == 2 && !isFull -> set(true)
+                    state == 1 && isFull && !first -> set(false)
+                }
+            }
+        }
+        if (listener.canDetectOrientation()) listener.enable()
+        onDispose { listener.disable() }
+    }
 }
 
 /** Tela cheia: paisagem + esconde as barras do sistema. */

@@ -171,6 +171,8 @@ class CarBrowsePresentation(
         text = c.label
         setTextColor(if (c.selected) Color.BLACK else Color.WHITE)
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+        // Uma linha só: com letra pequena, o texto às vezes quebrava e a última letra sumia ("Ao vivc").
+        isSingleLine = true
         gravity = Gravity.CENTER
         setPadding(dp(11), dp(6), dp(11), dp(6))
         background = rounded(if (c.selected) Color.WHITE else 0x33FFFFFF, dp(16))
@@ -192,16 +194,17 @@ class CarBrowsePresentation(
             for (c in chips) {
                 val v = chipView(c, onClick)
                 v.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
-                val w = v.measuredWidth
+                // Folga de 2 dp: o arredondamento da medida não pode cortar a última letra.
+                val w = v.measuredWidth + dp(2)
                 val current = row
                 if (current == null || used + gap + w > width) {
                     val r = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
                     box.addView(r, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(5) })
-                    r.addView(v, LinearLayout.LayoutParams(-2, -2))
+                    r.addView(v, LinearLayout.LayoutParams(w, -2))
                     row = r
                     used = w
                 } else {
-                    current.addView(v, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = gap })
+                    current.addView(v, LinearLayout.LayoutParams(w, -2).apply { leftMargin = gap })
                     used += gap + w
                 }
             }
@@ -260,7 +263,7 @@ class CarBrowsePresentation(
         if (!::content.isInitialized) return
         // O Android Auto reserva a faixa de cima inteira por causa do botão dele (a lupa), que fica só no
         // canto direito. As abas sobem para essa faixa e só deixam livre o espaço do botão.
-        stripReserve = if (top > 0) top + dp(8) else 0
+        stripReserve = if (top > 0) top + dp(4) else 0
         content.setPadding(left + dp(10), dp(8), right + dp(10), bottom)
         chipBox?.setPadding(0, 0, stripReserve, 0)
         titleBar?.setPadding(0, 0, stripReserve, 0)

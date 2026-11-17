@@ -1,5 +1,5 @@
 # Estado do projeto (para retomar após limite de uso)
-Última atualização: 2026-11-17 (v0.8.5).
+Última atualização: 2026-11-17 (v0.8.6).
 
 - Repositório: github.com/snakemoral/AutoTV, branch main. Cada push compila sozinho (GitHub Actions) e
   publica o APK na Release "latest". Trabalhar no clone em /home/claude/autotv-repo.
@@ -84,6 +84,12 @@
   (2) carro: a faixa de cima que o Android Auto reserva (stable area) só tem o botão dele no canto direito;
   as abas da tela inicial (CarBrowse.setInsets) e a barra do título do player (CarPlayerPresentation.setInsets)
   agora sobem para ela e reservam à direita só "top + 8dp". Abas da tela inicial em letra 13sp.
+- v0.8.6: navegador do carro também sobe a barra (CarBrowser.setInsets); aba "Buscar" removida da tela
+  inicial do carro (a lupa do Android Auto faz isso); botões de aba em uma linha e com 2 dp de folga (a última
+  letra sumia: "Ao vivc", "Wet"); "Ajustes" do player do carro virou só "⚙". Celular: RotationFullscreen
+  (Screens.kt) entra/sai da tela cheia pelo sensor de orientação. Controles que não sumiam: celular reaplica
+  o prazo de 3 s ao começar a tocar (PlayerUi.kt); carro conta o prazo a partir do início da reprodução e
+  força o sumiço se a animação for interrompida.
 - Publicação (pedido do usuário em 2026-11-13, vale sempre): toda versão nova deve ser publicada no main
   sem perguntar, e as antigas continuam disponíveis. O workflow cria uma Release numerada por versão
   (tag vX.Y.Z, arquivo AutoTV-X.Y.Z.apk, nunca apagada) e recria a "latest". Por isso, subir o
