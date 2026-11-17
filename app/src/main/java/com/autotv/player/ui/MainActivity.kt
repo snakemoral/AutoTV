@@ -28,8 +28,9 @@ class MainActivity : ComponentActivity() {
      */
     private fun keepScreenOnWhilePlaying() {
         lifecycleScope.launch {
-            combine(PlayerHub.isPlaying, PlayerHub.loading, PlayerHub.nowPlaying) { playing, loading, item ->
-                item != null && (playing || loading)
+            // Tocando na tela do carro, o celular só mostra um aviso: aí a tela apaga normalmente.
+            combine(PlayerHub.isPlaying, PlayerHub.loading, PlayerHub.nowPlaying, PlayerHub.carActive) { playing, loading, item, car ->
+                item != null && !car && (playing || loading)
             }.distinctUntilChanged().collect { on ->
                 if (on) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
                 else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)

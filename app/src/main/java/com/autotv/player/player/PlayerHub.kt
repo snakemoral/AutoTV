@@ -96,6 +96,9 @@ object PlayerHub {
     /** Quando cada marcação foi feita aqui (o YouTube pode demorar um pouco a refletir a mudança). */
     private val localRatingAt = HashMap<String, Long>()
 
+    /** true quando o que toca não tem imagem (rádio, áudio): as telas mostram a capa no lugar do vídeo. */
+    val audioOnly = MutableStateFlow(false)
+
     val qualityOptions = MutableStateFlow<List<Option>>(emptyList())
     val audioOptions = MutableStateFlow<List<Option>>(emptyList())
     val subtitleOptions = MutableStateFlow<List<Option>>(emptyList())
@@ -195,7 +198,10 @@ object PlayerHub {
                 }
             }
 
-            override fun onTracksChanged(tracks: Tracks) { publishTrackOptions() }
+            override fun onTracksChanged(tracks: Tracks) {
+                publishTrackOptions()
+                if (!tracks.isEmpty) audioOnly.value = !tracks.containsType(C.TRACK_TYPE_VIDEO)
+            }
 
             override fun onTrackSelectionParametersChanged(parameters: androidx.media3.common.TrackSelectionParameters) {
                 publishTrackOptions()
@@ -626,6 +632,8 @@ object PlayerHub {
         loading.value = true
         yt = null
         isLive.value = false
+        // Rádio: já mostra a capa enquanto conecta (depois os canais do próprio áudio confirmam).
+        audioOnly.value = item.kind == Kind.STREAM && item.group?.startsWith("Rádio") == true
         details.value = null
         rating.value = Store.youtubeId(item)?.let { localRatings[it] } ?: 0
         subscribed.value = Store.isFollowing(item.channelUrl)

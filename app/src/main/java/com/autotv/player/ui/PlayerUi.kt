@@ -56,6 +56,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
+import androidx.compose.ui.unit.sp
 import com.autotv.player.data.Channel
 import com.autotv.player.data.Item
 import com.autotv.player.data.Kind
@@ -127,6 +128,26 @@ fun PlayerSurface(
                     it.player = null
                 }
             )
+            // Rádio (só áudio): logotipo grande e nome no centro, no lugar da tela preta.
+            val audioOnly by PlayerHub.audioOnly.collectAsState()
+            if (audioOnly) {
+                Column(Modifier.align(Alignment.Center).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(
+                        Modifier.fillMaxHeight(if (fullscreen) 0.5f else 0.55f).aspectRatio(1f)
+                            .clip(RoundedCornerShape(20.dp)).background(Color(0xFF26262C)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text("♪", color = Color(0xFF9A9AA2), fontSize = 48.sp)
+                        item.thumb?.takeIf { it.isNotBlank() }?.let {
+                            AsyncImage(model = it, contentDescription = item.title,
+                                modifier = Modifier.fillMaxSize().background(Color(0xFF26262C)).padding(8.dp),
+                                contentScale = ContentScale.Fit)
+                        }
+                    }
+                    Text(item.title, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(top = 8.dp))
+                }
+            }
             // Brilho da imagem: escurece o vídeo
             if (brightness < 0.999f) {
                 Box(Modifier.matchParentSize().background(Color.Black.copy(alpha = 1f - brightness)))

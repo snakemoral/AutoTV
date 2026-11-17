@@ -156,6 +156,9 @@ class CarPlayerPresentation(
                 .collect { updateVideoInfo() }
         }
         jobs += scope.launch { PlayerHub.notice.collect { showNotice(it) } }
+        jobs += scope.launch {
+            combine(PlayerHub.nowPlaying, PlayerHub.audioOnly) { _, _ -> }.collect { updateArtwork() }
+        }
         jobs += scope.launch { PlayerHub.status.collect { s ->
             statusOverlay.text = s.orEmpty()
             statusOverlay.visibility = if (s.isNullOrBlank()) View.GONE else View.VISIBLE
@@ -257,6 +260,7 @@ class CarPlayerPresentation(
 
         dim = View(context).apply { visibility = View.GONE }
         root.addView(dim, FrameLayout.LayoutParams(-1, -1))
+        buildArtwork()
 
         statusOverlay = TextView(context).apply {
             setTextColor(Color.WHITE)
@@ -334,6 +338,80 @@ class CarPlayerPresentation(
 
     private lateinit var topBar: LinearLayout
 
+    /** Botão redondo só com ícone (voltar, ajustes). */
+    private fun roundIcon(res: Int, label: String, onClick: () -> Unit) = ImageView(context).apply {
+        setImageResource(res)
+        contentDescription = label
+        scaleType = ImageView.ScaleType.FIT_CENTER
+        setPadding(dp(11), dp(11), dp(11), dp(11))
+        background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0x77000000) }
+        layoutParams = LinearLayout.LayoutParams(dp(54), dp(54))
+        setOnClickListener { kick(); onClick() }
+    }
+
+    // ---- capa da rádio (conteúdo só de áudio) ----
+    private lateinit var artwork: LinearLayout
+    private lateinit var artworkImage: ImageView
+    private lateinit var artworkNote: TextView
+    private lateinit var artworkName: TextView
+
+    private fun buildArtwork() {
+        artwork = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            visibility = View.GONE
+        }
+        val box = FrameLayout(context).apply {
+            background = rounded(0xFF26262C.toInt(), dp(28))
+            clipToOutline = true
+        }
+        artworkNote = TextView(context).apply {
+            text = "♪"
+            setTextColor(0xFF9A9AA2.toInt())
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 96f)
+            gravity = Gravity.CENTER
+        }
+        box.addView(artworkNote, FrameLayout.LayoutParams(-1, -1))
+        artworkImage = ImageView(context).apply {
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+        }
+        box.addView(artworkImage, FrameLayout.LayoutParams(-1, -1))
+        artwork.addView(box, LinearLayout.LayoutParams(dp(220), dp(220)))
+        artworkName = TextView(context).apply {
+            setTextColor(Color.WHITE)
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 24f)
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+            maxLines = 2
+            ellipsize = android.text.TextUtils.TruncateAt.END
+        }
+        artwork.addView(artworkName, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(14) })
+        // Fica sobre a área do vídeo (que é preta numa rádio) e por baixo dos controles.
+        root.addView(artwork, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
+    }
+
+    private fun updateArtwork() {
+        val item = PlayerHub.nowPlaying.value
+        val show = item != null && PlayerHub.audioOnly.value
+        artwork.visibility = if (show) View.VISIBLE else View.GONE
+        if (!show || item == null) return
+        artworkName.text = item.title
+        val url = item.thumb?.takeIf { it.isNotBlank() }
+        if (artworkImage.tag == url) return
+        artworkImage.tag = url
+        artworkImage.setImageDrawable(null)
+        artworkNote.visibility = View.VISIBLE
+        if (url == null) return
+        scope.launch {
+            val bmp = withContext(Dispatchers.IO) { Thumbs.load(url, 512) }
+            if (bmp != null && artworkImage.tag == url) {
+                artworkImage.setImageBitmap(bmp)
+                artworkNote.visibility = View.GONE
+            }
+        }
+    }
+
     private fun buildTopBar() {
         val bar = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -341,7 +419,8 @@ class CarPlayerPresentation(
             background = gradient(true)
             setPadding(dp(12), dp(10), dp(12), dp(28))
         }
-        bar.addView(pill("‹  Lista") { onBack() })
+        // Voltar para a lista: seta (sem texto), em botão redondo.
+        bar.addView(roundIcon(R.drawable.ic_back, "Voltar") { onBack() })
 
         // Foto do canal: toque para ver os vídeos dele.
         avatarView = ImageView(context).apply {
@@ -351,7 +430,7 @@ class CarPlayerPresentation(
             visibility = View.GONE
             setOnClickListener { kick(); PlayerHub.currentChannel()?.let { onOpenChannel(it) } }
         }
-        bar.addView(avatarView, LinearLayout.LayoutParams(dp(52), dp(52)).apply { leftMargin = dp(14) })
+        bar.addView(avatarView, LinearLayout.LayoutParams(dp(52), dp(52)).apply { leftMargin = dp(10) })
 
         // Título e canal: toque para ver a descrição do vídeo.
         val titles = LinearLayout(context).apply {
@@ -374,13 +453,10 @@ class CarPlayerPresentation(
         }
         titles.addView(titleView)
         titles.addView(channelView)
-        bar.addView(titles, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(16), 0, dp(16), 0) })
+        bar.addView(titles, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(12), 0, dp(10), 0) })
 
-        // Só o ícone: sobra mais espaço para o título do vídeo.
-        bar.addView(pill("⚙") { openSettings(0) }.apply {
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 22f)
-            setPadding(dp(12), dp(6), dp(12), dp(6))
-        })
+        // Ajustes (qualidade, áudio, legendas): engrenagem, como no app do YouTube.
+        bar.addView(roundIcon(R.drawable.ic_settings, "Ajustes") { openSettings(0) })
         controlsContent.addView(bar, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
         topBar = bar
     }
