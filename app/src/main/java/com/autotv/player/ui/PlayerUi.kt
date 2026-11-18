@@ -56,6 +56,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.runtime.LaunchedEffect
 import com.autotv.player.data.Store
@@ -144,12 +145,15 @@ fun PlayerSurface(
                 val live by PlayerHub.isLive.collectAsState()
                 val chatId = if (item.kind == Kind.YOUTUBE) Store.youtubeId(item) else null
                 if (chatOn && live && chatId != null) {
-                    // Com os controles à mostra, deixa livre a barra de brilho; quando somem, vai todo para a direita.
-                    val chatEnd by androidx.compose.animation.core.animateDpAsState(
-                        if (controlsVisible) 52.dp else 8.dp, label = "chatEnd"
+                    // Com os controles à mostra, deixa livre a barra de brilho; quando somem, o chat inteiro desliza
+                    // para a direita sem mudar de largura (deslocamento, não margem: a largura fica sempre igual).
+                    val chatShift by androidx.compose.animation.core.animateDpAsState(
+                        if (controlsVisible) (-44).dp else 0.dp, label = "chatShift"
                     )
-                    FullscreenChat(chatId, Modifier.align(Alignment.CenterEnd).fillMaxHeight().fillMaxWidth(0.3f)
-                        .padding(top = 12.dp, bottom = 12.dp, end = chatEnd))
+                    FullscreenChat(chatId, Modifier.align(Alignment.CenterEnd)
+                        .padding(top = 12.dp, bottom = 12.dp, end = 8.dp)
+                        .offset(x = chatShift)
+                        .fillMaxHeight().fillMaxWidth(0.3f))
                 }
             }
             // Rádio (só áudio): logotipo grande e nome no centro, no lugar da tela preta.

@@ -1,5 +1,5 @@
 # Estado do projeto (para retomar após limite de uso)
-Última atualização: 2026-11-18 (v0.9.3).
+Última atualização: 2026-11-18 (v0.9.4; chat da tela cheia do celular desliza com offset e largura fixa, em vez de mudar a margem).
 
 - Repositório: github.com/snakemoral/AutoTV, branch main. Cada push compila sozinho (GitHub Actions) e
   publica o APK na Release "latest". Trabalhar no clone em /home/claude/autotv-repo.
