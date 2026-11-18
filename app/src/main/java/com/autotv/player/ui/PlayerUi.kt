@@ -56,6 +56,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.runtime.LaunchedEffect
 import com.autotv.player.data.Store
 import androidx.compose.foundation.layout.height
@@ -131,6 +132,16 @@ fun PlayerSurface(
                     it.player = null
                 }
             )
+            // Tela cheia numa live com o chat aberto: chat à direita, como no carro.
+            if (fullscreen) {
+                val chatOn by LiveChatPrefs.open.collectAsState()
+                val live by PlayerHub.isLive.collectAsState()
+                val chatId = if (item.kind == Kind.YOUTUBE) Store.youtubeId(item) else null
+                if (chatOn && live && chatId != null) {
+                    FullscreenChat(chatId, Modifier.align(Alignment.CenterEnd).fillMaxHeight().fillMaxWidth(0.3f)
+                        .padding(top = 12.dp, bottom = 12.dp, end = 16.dp))
+                }
+            }
             // Rádio (só áudio): logotipo grande e nome no centro, no lugar da tela preta.
             val audioOnly by PlayerHub.audioOnly.collectAsState()
             if (audioOnly) {
@@ -334,8 +345,8 @@ fun PlayerPanel(vm: MainViewModel, item: Item, onFullscreen: () -> Unit, onOpenC
     var showDescription by remember(item.id) { mutableStateOf(false) }
     val isLive by PlayerHub.isLive.collectAsState()
     val chatAvailable = isYoutube && isLive
-    var chatOpen by rememberSaveable { mutableStateOf(LiveChatPrefs.open) }
-    LaunchedEffect(chatOpen) { LiveChatPrefs.open = chatOpen }
+    val chatOpenState by LiveChatPrefs.open.collectAsState()
+    val chatOpen = chatOpenState
 
     Column(Modifier.fillMaxWidth().background(Color.Black)) {
         PlayerSurface(item, false, onFullscreen, Modifier.fillMaxWidth().aspectRatio(16f / 9f))
@@ -356,7 +367,7 @@ fun PlayerPanel(vm: MainViewModel, item: Item, onFullscreen: () -> Unit, onOpenC
                     "💬", fontSize = 20.sp,
                     modifier = Modifier.clip(CircleShape)
                         .background(if (chatOpen) Color.White else Color.Transparent)
-                        .clickable { chatOpen = !chatOpen }
+                        .clickable { LiveChatPrefs.open.value = !chatOpen }
                         .padding(horizontal = 10.dp, vertical = 6.dp)
                 )
             }
@@ -386,8 +397,10 @@ fun PlayerPanel(vm: MainViewModel, item: Item, onFullscreen: () -> Unit, onOpenC
                         Text(channelName ?: "Canal", maxLines = 1, overflow = TextOverflow.Ellipsis,
                             style = MaterialTheme.typography.bodyMedium, color = Color.White)
                         val subs = details?.subscribers ?: -1
-                        if (subs >= 0) {
-                            Text("${compactCount(subs)} inscritos", maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        val watching by PlayerHub.viewers.collectAsState()
+                        val line = channelFacts(subs, if (isLive) watching else -1)
+                        if (line.isNotEmpty()) {
+                            Text(line, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
                         }
                     }
@@ -412,12 +425,21 @@ fun PlayerPanel(vm: MainViewModel, item: Item, onFullscreen: () -> Unit, onOpenC
     if (showDescription) DescriptionDialog(item, details) { showDescription = false }
 }
 
-/** Lembra, enquanto o app está aberto, se o chat ao vivo estava aberto (vale para o próximo ao vivo). */
-object LiveChatPrefs { var open = false }
+/**
+ * Lembra, enquanto o app está aberto, se o chat ao vivo estava aberto (vale para o próximo ao vivo e para
+ * a tela cheia).
+ */
+object LiveChatPrefs { val open = kotlinx.coroutines.flow.MutableStateFlow(false) }
 
-/** Chat da transmissão ao vivo (só leitura), com a mensagem mais nova embaixo. */
+/** "4,2 mi inscritos  •  1,2 mil assistindo" (só as partes conhecidas). */
+fun channelFacts(subscribers: Long, watching: Long): String = listOfNotNull(
+    subscribers.takeIf { it >= 0 }?.let { "${compactCount(it)} inscritos" },
+    watching.takeIf { it >= 0 }?.let { "${compactCount(it)} assistindo" }
+).joinToString("  •  ")
+
+/** Mensagens do chat que chegam enquanto a tela está aberta. [info] = aviso (conectando, erro). */
 @Composable
-private fun LiveChatPanel(videoId: String) {
+private fun rememberChat(videoId: String): Pair<List<com.autotv.player.data.ChatMessage>, String?> {
     var messages by remember(videoId) { mutableStateOf<List<com.autotv.player.data.ChatMessage>>(emptyList()) }
     var info by remember(videoId) { mutableStateOf<String?>("Conectando ao chat…") }
     LaunchedEffect(videoId) {
@@ -429,22 +451,58 @@ private fun LiveChatPanel(videoId: String) {
             info = e.message ?: "Não foi possível abrir o chat"
         }
     }
+    return messages to info
+}
+
+private fun chatLine(m: com.autotv.player.data.ChatMessage) = androidx.compose.ui.text.buildAnnotatedString {
+    m.amount?.let {
+        pushStyle(androidx.compose.ui.text.SpanStyle(color = Color(0xFFFFC107), fontWeight = androidx.compose.ui.text.font.FontWeight.Bold))
+        append("$it  "); pop()
+    }
+    pushStyle(androidx.compose.ui.text.SpanStyle(color = Color(0xFFBBBBBB)))
+    append(m.author); pop()
+    append("  ")
+    append(m.text)
+}
+
+/**
+ * Chat sobre o vídeo em tela cheia, como no carro: à direita, de cima a baixo, cada mensagem num fundo
+ * escuro meio transparente (o vídeo continua aparecendo por trás).
+ */
+@Composable
+fun FullscreenChat(videoId: String, modifier: Modifier = Modifier) {
+    val (messages, info) = rememberChat(videoId)
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    LaunchedEffect(messages.size) { if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1) }
+    Box(modifier) {
+        LazyColumn(state = listState, modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.Bottom)) {
+            itemsIndexed(messages.takeLast(40), key = { i, m -> m.id.ifBlank { "i$i" } }) { _, m ->
+                Text(
+                    chatLine(m), color = Color.White, style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.clip(RoundedCornerShape(10.dp)).background(Color(0x73000000))
+                        .padding(horizontal = 10.dp, vertical = 5.dp)
+                )
+            }
+        }
+        info?.let {
+            Text(it, color = Color.White, modifier = Modifier.align(Alignment.Center)
+                .clip(RoundedCornerShape(10.dp)).background(Color(0x73000000)).padding(12.dp))
+        }
+    }
+}
+
+/** Chat da transmissão ao vivo (só leitura), com a mensagem mais nova embaixo. */
+@Composable
+private fun LiveChatPanel(videoId: String) {
+    val (messages, info) = rememberChat(videoId)
     val listState = androidx.compose.foundation.lazy.rememberLazyListState()
     LaunchedEffect(messages.size) { if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1) }
     Box(Modifier.fillMaxWidth().height(240.dp).background(Color(0xFF111114))) {
         LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 6.dp)) {
             itemsIndexed(messages, key = { i, m -> m.id.ifBlank { "i$i" } }) { _, m ->
                 Text(
-                    androidx.compose.ui.text.buildAnnotatedString {
-                        m.amount?.let {
-                            pushStyle(androidx.compose.ui.text.SpanStyle(color = Color(0xFFFFC107), fontWeight = androidx.compose.ui.text.font.FontWeight.Bold))
-                            append("$it  "); pop()
-                        }
-                        pushStyle(androidx.compose.ui.text.SpanStyle(color = Color(0xFFAAAAAA)))
-                        append(m.author); pop()
-                        append("  ")
-                        append(m.text)
-                    },
+                    chatLine(m),
                     color = Color.White, style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(vertical = 3.dp)
                 )

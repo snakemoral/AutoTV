@@ -1,5 +1,5 @@
 # Estado do projeto (para retomar após limite de uso)
-Última atualização: 2026-11-18 (v0.9.0).
+Última atualização: 2026-11-18 (v0.9.1).
 
 - Repositório: github.com/snakemoral/AutoTV, branch main. Cada push compila sozinho (GitHub Actions) e
   publica o APK na Release "latest". Trabalhar no clone em /home/claude/autotv-repo.
@@ -103,6 +103,10 @@
   depois live_chat/get_live_chat em ciclo, respeitando timeoutMs. Celular: botão 💬 e LiveChatPanel (PlayerUi.kt);
   carro: botão ic_chat e painel à direita (CarPlayerPresentation.buildChat/updateChat). Não conferido contra o
   YouTube daqui. Enviar mensagens não foi feito (precisa de conta e, no carro, distrai).
+- v0.9.1: chat do carro de cima a baixo (largura 270dp), mensagens com fundo próprio meio transparente;
+  celular em tela cheia mostra FullscreenChat (PlayerUi.kt) no mesmo estilo; LiveChatPrefs.open virou StateFlow.
+  Espectadores da live: PlayerHub.viewers (começa com details.views, que numa live é "assistindo agora", e é
+  atualizado a cada 30 s por LiveChat.viewers, endpoint updated_metadata). Não conferido contra o YouTube.
 - Publicação (pedido do usuário em 2026-11-13, vale sempre): toda versão nova deve ser publicada no main
   sem perguntar, e as antigas continuam disponíveis. O workflow cria uma Release numerada por versão
   (tag vX.Y.Z, arquivo AutoTV-X.Y.Z.apk, nunca apagada) e recria a "latest". Por isso, subir o

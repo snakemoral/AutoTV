@@ -69,6 +69,18 @@ object LiveChat {
         return continuationOf(renderer)?.first ?: error("Esta transmissão não tem chat")
     }
 
+    /**
+     * Quantas pessoas estão assistindo a live agora (o mesmo número do site, que ele atualiza sozinho).
+     * Devolve null se o YouTube não informou.
+     */
+    fun viewers(videoId: String): Long? {
+        val res = call("updated_metadata", JSONObject().put("videoId", videoId))
+        val r = find(res, "videoViewCountRenderer") ?: return null
+        r.optString("originalViewCount").toLongOrNull()?.let { return it }
+        val text = textOf(r.optJSONObject("viewCount"))
+        return text.filter { it.isDigit() }.toLongOrNull()
+    }
+
     private fun textOf(o: JSONObject?): String {
         if (o == null) return ""
         o.optString("simpleText").takeIf { it.isNotBlank() }?.let { return it }

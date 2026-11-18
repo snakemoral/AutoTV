@@ -98,6 +98,23 @@ object PlayerHub {
 
     /** true quando o que toca não tem imagem (rádio, áudio): as telas mostram a capa no lugar do vídeo. */
     val audioOnly = MutableStateFlow(false)
+    /** Pessoas assistindo a live agora (-1 = não é live ou não se sabe). */
+    val viewers = MutableStateFlow(-1L)
+    private var viewersJob: Job? = null
+
+    private fun watchViewers(item: Item, first: Long) {
+        viewersJob?.cancel()
+        viewers.value = first
+        val id = Store.youtubeId(item) ?: return
+        viewersJob = scope.launch {
+            while (true) {
+                delay(30_000)
+                if (nowPlaying.value !== item) break
+                withContext(Dispatchers.IO) { runCatching { com.autotv.player.data.LiveChat.viewers(id) }.getOrNull() }
+                    ?.let { if (nowPlaying.value === item) viewers.value = it }
+            }
+        }
+    }
 
     val qualityOptions = MutableStateFlow<List<Option>>(emptyList())
     val audioOptions = MutableStateFlow<List<Option>>(emptyList())
@@ -330,6 +347,8 @@ object PlayerHub {
     }
 
     fun stop() {
+        viewersJob?.cancel()
+        viewers.value = -1L
         savePosition()
         tracking = false
         Prefs.resumeInCar = false
@@ -626,6 +645,8 @@ object PlayerHub {
         netJob?.cancel()
         // Para o vídeo anterior na hora: o som dele não pode continuar enquanto o novo é procurado.
         player.stop()
+        viewersJob?.cancel()
+        viewers.value = -1L
         retries = 0
         failed = false
         nowPlaying.value = item
@@ -664,6 +685,8 @@ object PlayerHub {
                         val m = YouTube.resolveAsync(item.url)
                         setupYoutube(m)
                         details.value = m.details
+                        // Live: na página, o número de visualizações é o de pessoas assistindo agora.
+                        if (m.isLive) watchViewers(item, m.details?.views ?: -1L)
                         m.details?.channelUrl?.let { subscribed.value = Store.isFollowing(it) }
                         Store.youtubeId(item)?.let { loadAccountState(it) }
                         val from = if (m.isLive) 0L else resumePosition(item)

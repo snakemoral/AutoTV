@@ -162,6 +162,7 @@ class CarPlayerPresentation(
         jobs += scope.launch {
             combine(PlayerHub.nowPlaying, PlayerHub.isLive) { _, _ -> }.collect { updateChat() }
         }
+        jobs += scope.launch { combine(PlayerHub.viewers, PlayerHub.isLive) { _, _ -> }.collect { updateVideoInfo() } }
         jobs += scope.launch { PlayerHub.status.collect { s ->
             statusOverlay.text = s.orEmpty()
             statusOverlay.visibility = if (s.isNullOrBlank()) View.GONE else View.VISIBLE
@@ -219,6 +220,10 @@ class CarPlayerPresentation(
         // A faixa de cima é reservada pelo Android Auto só por causa do botão dele no canto direito:
         // a barra do título sobe para ela e deixa livre apenas o espaço desse botão.
         controlsContent.setPadding(left, 0, right, bottom)
+        // O chat vai de cima a baixo da área livre (abaixo dele fica a barra do Android Auto).
+        if (::chatPanel.isInitialized) chatPanel.layoutParams = (chatPanel.layoutParams as FrameLayout.LayoutParams).apply {
+            topMargin = dp(10); bottomMargin = bottom + dp(10); rightMargin = right + dp(16)
+        }
         topBar.setPadding(dp(12), dp(6), if (top > 0) top + dp(6) else dp(12), dp(28))
         subtitles.setPadding(left, 0, right, maxOf(bottom, dp(24)))
     }
@@ -364,30 +369,33 @@ class CarPlayerPresentation(
     private var chatVideo: String? = null
 
     private fun buildChat() {
+        // Sem fundo próprio: cada mensagem tem o seu, escuro e meio transparente (o vídeo aparece por trás).
         chatPanel = FrameLayout(context).apply {
-            background = rounded(0xB3000000.toInt(), dp(16))
             visibility = View.GONE
             isClickable = true // toques no chat não escondem/mostram os controles
         }
         chatList = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(10), dp(14), dp(10))
+            gravity = Gravity.BOTTOM
         }
         chatScroll = android.widget.ScrollView(context).apply {
             isVerticalScrollBarEnabled = false
+            isFillViewport = true // poucas mensagens ficam embaixo, como no YouTube
             addView(chatList, ViewGroup.LayoutParams(-1, -2))
         }
         chatPanel.addView(chatScroll, FrameLayout.LayoutParams(-1, -1))
         chatInfo = TextView(context).apply {
-            setTextColor(0xCCFFFFFF.toInt())
+            setTextColor(Color.WHITE)
             setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
             gravity = Gravity.CENTER
-            setPadding(dp(16), dp(16), dp(16), dp(16))
+            background = rounded(0x73000000, dp(12))
+            setPadding(dp(14), dp(10), dp(14), dp(10))
         }
         chatPanel.addView(chatInfo, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
-        // À direita, entre a barra de cima e a de baixo; fica visível mesmo quando os controles somem.
-        root.addView(chatPanel, FrameLayout.LayoutParams(dp(320), -1, Gravity.END).apply {
-            topMargin = dp(96); bottomMargin = dp(140); rightMargin = dp(16)
+        // À direita, de cima a baixo da área do vídeo; fica visível mesmo quando os controles somem
+        // (os controles, quando aparecem, ficam por cima dele).
+        root.addView(chatPanel, FrameLayout.LayoutParams(dp(270), -1, Gravity.END).apply {
+            topMargin = dp(10); bottomMargin = dp(10); rightMargin = dp(16)
         })
     }
 
@@ -410,8 +418,9 @@ class CarPlayerPresentation(
                 this.text = text
                 setTextColor(Color.WHITE)
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
-                setPadding(0, dp(3), 0, dp(3))
-            })
+                background = rounded(0x73000000, dp(12))
+                setPadding(dp(12), dp(6), dp(12), dp(6))
+            }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(5) })
         }
         chatScroll.post { chatScroll.fullScroll(View.FOCUS_DOWN) }
     }
@@ -823,7 +832,12 @@ class CarPlayerPresentation(
 
         val channel = details?.channelName ?: item?.group
         val subs = details?.subscribers ?: -1
-        channelView.text = listOfNotNull(channel, if (subs >= 0) "${compactCount(subs)} inscritos" else null).joinToString("  •  ")
+        val watching = if (PlayerHub.isLive.value) PlayerHub.viewers.value else -1L
+        channelView.text = listOfNotNull(
+            channel,
+            subs.takeIf { it >= 0 }?.let { "${compactCount(it)} inscritos" },
+            watching.takeIf { it >= 0 }?.let { "${compactCount(it)} assistindo" }
+        ).joinToString("  •  ")
         channelView.visibility = if (channelView.text.isNullOrBlank()) View.GONE else View.VISIBLE
 
         val hasChannel = youtube && PlayerHub.currentChannel() != null

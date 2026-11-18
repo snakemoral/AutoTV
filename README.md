@@ -1,4 +1,4 @@
-# AutoTV (v0.9.0)
+# AutoTV (v0.9.1)
 
 Player de YouTube, TV por lista (IPTV/M3U), vídeos do celular e navegador de internet para Android,
 com tela própria no Android Auto.
@@ -46,7 +46,8 @@ o `subscriptions.csv` (ou o .zip) do Google Takeout.
 **Chat ao vivo**
 Em transmissões ao vivo do YouTube aparece o botão 💬, no celular (ao lado do título) e no carro (ao lado
 da engrenagem). Ele abre o chat da live, só para ler: no celular embaixo do vídeo, no carro num painel à
-direita, com as mensagens mais recentes.
+direita, com as mensagens mais recentes. No celular, em tela cheia, o chat aberto aparece sobre o vídeo, à
+direita, como no carro. Nas lives também aparece quantas pessoas estão assistindo, ao lado dos inscritos.
 
 **Rádios online**
 Rádios do Brasil mais ouvidas, com filtro por gênero (notícias, esportes, sertanejo, pop, rock, MPB, gospel
