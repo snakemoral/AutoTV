@@ -1,4 +1,4 @@
-# AutoTV (v0.8.8)
+# AutoTV (v0.9.0)
 
 Player de YouTube, TV por lista (IPTV/M3U), vídeos do celular e navegador de internet para Android,
 com tela própria no Android Auto.
@@ -42,6 +42,11 @@ Em Seguindo > "Entrar com Google" o app mostra um código para digitar em google
 método das TVs). A senha e a verificação em duas etapas ficam no navegador; o app guarda só uma chave do
 YouTube, cifrada, que pode ser revogada em myaccount.google.com/permissions. Sem login, dá para importar
 o `subscriptions.csv` (ou o .zip) do Google Takeout.
+
+**Chat ao vivo**
+Em transmissões ao vivo do YouTube aparece o botão 💬, no celular (ao lado do título) e no carro (ao lado
+da engrenagem). Ele abre o chat da live, só para ler: no celular embaixo do vídeo, no carro num painel à
+direita, com as mensagens mais recentes.
 
 **Rádios online**
 Rádios do Brasil mais ouvidas, com filtro por gênero (notícias, esportes, sertanejo, pop, rock, MPB, gospel

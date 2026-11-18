@@ -56,6 +56,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.layout.ContentScale
 import coil.compose.AsyncImage
+import androidx.compose.runtime.LaunchedEffect
+import com.autotv.player.data.Store
+import androidx.compose.foundation.layout.height
 import androidx.compose.ui.unit.sp
 import com.autotv.player.data.Channel
 import com.autotv.player.data.Item
@@ -329,6 +332,10 @@ fun PlayerPanel(vm: MainViewModel, item: Item, onFullscreen: () -> Unit, onOpenC
     val channelName = details?.channelName ?: item.group
     val channelUrl = details?.channelUrl ?: item.channelUrl
     var showDescription by remember(item.id) { mutableStateOf(false) }
+    val isLive by PlayerHub.isLive.collectAsState()
+    val chatAvailable = isYoutube && isLive
+    var chatOpen by rememberSaveable { mutableStateOf(LiveChatPrefs.open) }
+    LaunchedEffect(chatOpen) { LiveChatPrefs.open = chatOpen }
 
     Column(Modifier.fillMaxWidth().background(Color.Black)) {
         PlayerSurface(item, false, onFullscreen, Modifier.fillMaxWidth().aspectRatio(16f / 9f))
@@ -342,6 +349,16 @@ fun PlayerPanel(vm: MainViewModel, item: Item, onFullscreen: () -> Unit, onOpenC
                     Text(it, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
                 }
+            }
+            if (chatAvailable) {
+                // Transmissão ao vivo: abre e fecha o chat embaixo do vídeo.
+                Text(
+                    "💬", fontSize = 20.sp,
+                    modifier = Modifier.clip(CircleShape)
+                        .background(if (chatOpen) Color.White else Color.Transparent)
+                        .clickable { chatOpen = !chatOpen }
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                )
             }
             IconButton(onClick = { vm.toggleFavorite(item) }) {
                 Icon(if (isFav) Icons.Default.Favorite else Icons.Default.FavoriteBorder, "Favorito", tint = Color.White)
@@ -389,9 +406,54 @@ fun PlayerPanel(vm: MainViewModel, item: Item, onFullscreen: () -> Unit, onOpenC
                 InfoPill("👎", selected = rating < 0) { PlayerHub.rate(-1) }
             }
         }
+        if (chatAvailable && chatOpen) Store.youtubeId(item)?.let { LiveChatPanel(it) }
     }
 
     if (showDescription) DescriptionDialog(item, details) { showDescription = false }
+}
+
+/** Lembra, enquanto o app está aberto, se o chat ao vivo estava aberto (vale para o próximo ao vivo). */
+object LiveChatPrefs { var open = false }
+
+/** Chat da transmissão ao vivo (só leitura), com a mensagem mais nova embaixo. */
+@Composable
+private fun LiveChatPanel(videoId: String) {
+    var messages by remember(videoId) { mutableStateOf<List<com.autotv.player.data.ChatMessage>>(emptyList()) }
+    var info by remember(videoId) { mutableStateOf<String?>("Conectando ao chat…") }
+    LaunchedEffect(videoId) {
+        try {
+            com.autotv.player.data.LiveChat.watch(videoId).collect { messages = it; info = null }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            info = e.message ?: "Não foi possível abrir o chat"
+        }
+    }
+    val listState = androidx.compose.foundation.lazy.rememberLazyListState()
+    LaunchedEffect(messages.size) { if (messages.isNotEmpty()) listState.animateScrollToItem(messages.size - 1) }
+    Box(Modifier.fillMaxWidth().height(240.dp).background(Color(0xFF111114))) {
+        LazyColumn(state = listState, modifier = Modifier.fillMaxSize().padding(horizontal = 12.dp, vertical = 6.dp)) {
+            itemsIndexed(messages, key = { i, m -> m.id.ifBlank { "i$i" } }) { _, m ->
+                Text(
+                    androidx.compose.ui.text.buildAnnotatedString {
+                        m.amount?.let {
+                            pushStyle(androidx.compose.ui.text.SpanStyle(color = Color(0xFFFFC107), fontWeight = androidx.compose.ui.text.font.FontWeight.Bold))
+                            append("$it  "); pop()
+                        }
+                        pushStyle(androidx.compose.ui.text.SpanStyle(color = Color(0xFFAAAAAA)))
+                        append(m.author); pop()
+                        append("  ")
+                        append(m.text)
+                    },
+                    color = Color.White, style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(vertical = 3.dp)
+                )
+            }
+        }
+        info?.let {
+            Text(it, color = Color.LightGray, modifier = Modifier.align(Alignment.Center).padding(16.dp))
+        }
+    }
 }
 
 /** Botão em forma de pílula; [selected] deixa em destaque. */

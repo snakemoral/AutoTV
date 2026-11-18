@@ -159,6 +159,9 @@ class CarPlayerPresentation(
         jobs += scope.launch {
             combine(PlayerHub.nowPlaying, PlayerHub.audioOnly) { _, _ -> }.collect { updateArtwork() }
         }
+        jobs += scope.launch {
+            combine(PlayerHub.nowPlaying, PlayerHub.isLive) { _, _ -> }.collect { updateChat() }
+        }
         jobs += scope.launch { PlayerHub.status.collect { s ->
             statusOverlay.text = s.orEmpty()
             statusOverlay.visibility = if (s.isNullOrBlank()) View.GONE else View.VISIBLE
@@ -191,6 +194,7 @@ class CarPlayerPresentation(
     }
 
     override fun onStop() {
+        chatJob?.cancel(); chatJob = null; chatVideo = null
         ticker?.let { handler.removeCallbacks(it) }
         ticker = null
         jobs.forEach { it.cancel() }
@@ -261,6 +265,7 @@ class CarPlayerPresentation(
         dim = View(context).apply { visibility = View.GONE }
         root.addView(dim, FrameLayout.LayoutParams(-1, -1))
         buildArtwork()
+        buildChat()
 
         statusOverlay = TextView(context).apply {
             setTextColor(Color.WHITE)
@@ -347,6 +352,98 @@ class CarPlayerPresentation(
         background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(0x77000000) }
         layoutParams = LinearLayout.LayoutParams(dp(54), dp(54))
         setOnClickListener { kick(); onClick() }
+    }
+
+    // ---- chat ao vivo ----
+    private lateinit var chatBtn: ImageView
+    private lateinit var chatPanel: FrameLayout
+    private lateinit var chatList: LinearLayout
+    private lateinit var chatScroll: android.widget.ScrollView
+    private lateinit var chatInfo: TextView
+    private var chatJob: kotlinx.coroutines.Job? = null
+    private var chatVideo: String? = null
+
+    private fun buildChat() {
+        chatPanel = FrameLayout(context).apply {
+            background = rounded(0xB3000000.toInt(), dp(16))
+            visibility = View.GONE
+            isClickable = true // toques no chat não escondem/mostram os controles
+        }
+        chatList = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+        }
+        chatScroll = android.widget.ScrollView(context).apply {
+            isVerticalScrollBarEnabled = false
+            addView(chatList, ViewGroup.LayoutParams(-1, -2))
+        }
+        chatPanel.addView(chatScroll, FrameLayout.LayoutParams(-1, -1))
+        chatInfo = TextView(context).apply {
+            setTextColor(0xCCFFFFFF.toInt())
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f)
+            gravity = Gravity.CENTER
+            setPadding(dp(16), dp(16), dp(16), dp(16))
+        }
+        chatPanel.addView(chatInfo, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
+        // À direita, entre a barra de cima e a de baixo; fica visível mesmo quando os controles somem.
+        root.addView(chatPanel, FrameLayout.LayoutParams(dp(320), -1, Gravity.END).apply {
+            topMargin = dp(96); bottomMargin = dp(140); rightMargin = dp(16)
+        })
+    }
+
+    private fun showChat(list: List<com.autotv.player.data.ChatMessage>) {
+        chatInfo.visibility = View.GONE
+        chatList.removeAllViews()
+        // Na tela do carro, só as mais recentes (a mais nova embaixo).
+        list.takeLast(30).forEach { m ->
+            val text = android.text.SpannableStringBuilder()
+            m.amount?.let {
+                val s = text.length
+                text.append(it).append("  ")
+                text.setSpan(android.text.style.ForegroundColorSpan(0xFFFFC107.toInt()), s, text.length, 0)
+            }
+            val s = text.length
+            text.append(m.author)
+            text.setSpan(android.text.style.ForegroundColorSpan(0xFFAAAAAA.toInt()), s, text.length, 0)
+            text.append("  ").append(m.text)
+            chatList.addView(TextView(context).apply {
+                this.text = text
+                setTextColor(Color.WHITE)
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+                setPadding(0, dp(3), 0, dp(3))
+            })
+        }
+        chatScroll.post { chatScroll.fullScroll(View.FOCUS_DOWN) }
+    }
+
+    private fun updateChat() {
+        val item = PlayerHub.nowPlaying.value
+        val id = item?.let { com.autotv.player.data.Store.youtubeId(it) }
+        val available = id != null && PlayerHub.isLive.value
+        chatBtn.visibility = if (available) View.VISIBLE else View.GONE
+        chatBtn.background = GradientDrawable().apply {
+            shape = GradientDrawable.OVAL; setColor(if (chatWanted && available) 0xCCFF2D55.toInt() else 0x77000000)
+        }
+        val open = available && chatWanted
+        chatPanel.visibility = if (open) View.VISIBLE else View.GONE
+        if (!open) { chatJob?.cancel(); chatJob = null; chatVideo = null; return }
+        if (chatVideo == id && chatJob?.isActive == true) return
+        chatJob?.cancel()
+        chatVideo = id
+        chatList.removeAllViews()
+        chatInfo.text = "Conectando ao chat…"
+        chatInfo.visibility = View.VISIBLE
+        chatJob = scope.launch {
+            try {
+                com.autotv.player.data.LiveChat.watch(id!!).collect { showChat(it) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                chatList.removeAllViews()
+                chatInfo.text = e.message ?: "Não foi possível abrir o chat"
+                chatInfo.visibility = View.VISIBLE
+            }
+        }
     }
 
     // ---- capa da rádio (conteúdo só de áudio) ----
@@ -456,6 +553,12 @@ class CarPlayerPresentation(
         bar.addView(titles, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(12), 0, dp(10), 0) })
 
         // Ajustes (qualidade, áudio, legendas): engrenagem, como no app do YouTube.
+        // Chat da transmissão ao vivo (só aparece em lives do YouTube).
+        chatBtn = roundIcon(R.drawable.ic_chat, "Chat") { chatWanted = !chatWanted; updateChat() }.apply {
+            visibility = View.GONE
+            (layoutParams as LinearLayout.LayoutParams).rightMargin = dp(8)
+        }
+        bar.addView(chatBtn)
         bar.addView(roundIcon(R.drawable.ic_settings, "Ajustes") { openSettings(0) })
         controlsContent.addView(bar, FrameLayout.LayoutParams(-1, -2, Gravity.TOP))
         topBar = bar
@@ -924,6 +1027,9 @@ class CarPlayerPresentation(
     }
 
     private companion object {
+        /** O chat ao vivo fica aberto de um vídeo para o outro, enquanto o app estiver aberto. */
+        var chatWanted = false
+
         const val AUTO_HIDE_MS = 4500L
     }
 }
