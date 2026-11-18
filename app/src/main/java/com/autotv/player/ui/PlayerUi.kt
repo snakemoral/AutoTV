@@ -144,9 +144,12 @@ fun PlayerSurface(
                 val live by PlayerHub.isLive.collectAsState()
                 val chatId = if (item.kind == Kind.YOUTUBE) Store.youtubeId(item) else null
                 if (chatOn && live && chatId != null) {
-                    // Deixa livre, à direita, a barra de brilho.
+                    // Com os controles à mostra, deixa livre a barra de brilho; quando somem, vai todo para a direita.
+                    val chatEnd by androidx.compose.animation.core.animateDpAsState(
+                        if (controlsVisible) 52.dp else 8.dp, label = "chatEnd"
+                    )
                     FullscreenChat(chatId, Modifier.align(Alignment.CenterEnd).fillMaxHeight().fillMaxWidth(0.3f)
-                        .padding(top = 12.dp, bottom = 12.dp, end = 52.dp))
+                        .padding(top = 12.dp, bottom = 12.dp, end = chatEnd))
                 }
             }
             // Rádio (só áudio): logotipo grande e nome no centro, no lugar da tela preta.
@@ -213,13 +216,22 @@ fun PlayerSurface(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // Toque no título: descrição do vídeo (vale também na tela cheia).
-                Text(
-                    item.title, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.weight(1f)
+                Column(
+                    Modifier.weight(1f)
                         .clickable(enabled = item.kind == Kind.YOUTUBE) { showDescription = true }
-                        .padding(vertical = 10.dp)
-                )
+                        .padding(vertical = 6.dp)
+                ) {
+                    Text(
+                        item.title, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        fontWeight = FontWeight.Medium
+                    )
+                    // Tela cheia numa live: quantas pessoas estão assistindo, junto do título.
+                    val watching by PlayerHub.viewers.collectAsState()
+                    if (fullscreen && liveNow && watching >= 0) {
+                        Text("● ${compactCount(watching)} assistindo", maxLines = 1,
+                            style = MaterialTheme.typography.bodySmall, color = Color(0xFFFF6B81))
+                    }
+                }
                 if (fullscreen && item.kind == Kind.YOUTUBE && liveNow) {
                     // Liga e desliga o chat da live sem sair da tela cheia.
                     Text(

@@ -222,7 +222,7 @@ class CarPlayerPresentation(
         controlsContent.setPadding(left, 0, right, bottom)
         // O chat vai de cima a baixo da área livre (abaixo dele fica a barra do Android Auto).
         if (::chatPanel.isInitialized) chatPanel.layoutParams = (chatPanel.layoutParams as FrameLayout.LayoutParams).apply {
-            topMargin = dp(10); bottomMargin = bottom + dp(10); rightMargin = right + dp(16)
+            topMargin = dp(10); bottomMargin = bottom + dp(10); rightMargin = right + dp(6)
         }
         topBar.setPadding(dp(12), dp(6), if (top > 0) top + dp(6) else dp(12), dp(28))
         subtitles.setPadding(left, 0, right, maxOf(bottom, dp(24)))
@@ -395,8 +395,9 @@ class CarPlayerPresentation(
         // À direita, de cima a baixo da área do vídeo; fica visível mesmo quando os controles somem
         // (os controles, quando aparecem, ficam por cima dele).
         root.addView(chatPanel, FrameLayout.LayoutParams(dp(215), -1, Gravity.END).apply {
-            topMargin = dp(10); bottomMargin = dp(10); rightMargin = dp(16)
+            topMargin = dp(10); bottomMargin = dp(10); rightMargin = dp(6)
         })
+        moveChat(animated = false)
     }
 
     private fun showChat(list: List<com.autotv.player.data.ChatMessage>) {
@@ -1020,10 +1021,19 @@ class CarPlayerPresentation(
 
     private fun kick() { lastInteraction = SystemClock.uptimeMillis() }
 
+    /** Chat encostado à direita; com os controles à mostra, sai da frente da barra de brilho. */
+    private fun moveChat(animated: Boolean = true) {
+        if (!::chatPanel.isInitialized) return
+        val x = if (controlsVisible) -dp(70).toFloat() else 0f
+        chatPanel.animate().cancel()
+        if (animated) chatPanel.animate().translationX(x).setDuration(220).start() else chatPanel.translationX = x
+    }
+
     private fun showControls() {
         kick()
         if (controlsVisible && controls.visibility == View.VISIBLE) return
         controlsVisible = true
+        moveChat()
         controls.animate().cancel()
         controls.visibility = View.VISIBLE
         controls.animate().alpha(1f).setDuration(180).start()
@@ -1032,6 +1042,7 @@ class CarPlayerPresentation(
     private fun hideControls() {
         if (!controlsVisible) return
         controlsVisible = false
+        moveChat()
         controls.animate().cancel()
         controls.animate().alpha(0f).setDuration(220).withEndAction {
             if (!controlsVisible) controls.visibility = View.GONE

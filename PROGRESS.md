@@ -1,5 +1,5 @@
 # Estado do projeto (para retomar após limite de uso)
-Última atualização: 2026-11-18 (v0.9.2).
+Última atualização: 2026-11-18 (v0.9.3).
 
 - Repositório: github.com/snakemoral/AutoTV, branch main. Cada push compila sozinho (GitHub Actions) e
   publica o APK na Release "latest". Trabalhar no clone em /home/claude/autotv-repo.
@@ -110,6 +110,8 @@
 - v0.9.2: celular: espectadores em linha própria no painel (não cabia ao lado dos inscritos) e buscados na hora
   se não vierem com o vídeo; na tela cheia, título abre a descrição e há botão 💬; controles do PlayerView recriado
   (entrar/sair da tela cheia) recebem showController() para sumirem sozinhos. Carro: chat com 215dp.
+- v0.9.3: espectadores junto do título na tela cheia do celular; chat encosta à direita quando os controles
+  somem e se afasta da barra de brilho quando aparecem (celular: animateDpAsState; carro: moveChat/translationX).
 - Publicação (pedido do usuário em 2026-11-13, vale sempre): toda versão nova deve ser publicada no main
   sem perguntar, e as antigas continuam disponíveis. O workflow cria uma Release numerada por versão
   (tag vX.Y.Z, arquivo AutoTV-X.Y.Z.apk, nunca apagada) e recria a "latest". Por isso, subir o

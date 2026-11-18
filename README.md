@@ -1,4 +1,4 @@
-# AutoTV (v0.9.2)
+# AutoTV (v0.9.3)
 
 Player de YouTube, TV por lista (IPTV/M3U), vídeos do celular e navegador de internet para Android,
 com tela própria no Android Auto.
