@@ -1,5 +1,5 @@
 # Estado do projeto (para retomar após limite de uso)
-Última atualização: 2026-11-18 (v0.9.1).
+Última atualização: 2026-11-18 (v0.9.2).
 
 - Repositório: github.com/snakemoral/AutoTV, branch main. Cada push compila sozinho (GitHub Actions) e
   publica o APK na Release "latest". Trabalhar no clone em /home/claude/autotv-repo.
@@ -107,6 +107,9 @@
   celular em tela cheia mostra FullscreenChat (PlayerUi.kt) no mesmo estilo; LiveChatPrefs.open virou StateFlow.
   Espectadores da live: PlayerHub.viewers (começa com details.views, que numa live é "assistindo agora", e é
   atualizado a cada 30 s por LiveChat.viewers, endpoint updated_metadata). Não conferido contra o YouTube.
+- v0.9.2: celular: espectadores em linha própria no painel (não cabia ao lado dos inscritos) e buscados na hora
+  se não vierem com o vídeo; na tela cheia, título abre a descrição e há botão 💬; controles do PlayerView recriado
+  (entrar/sair da tela cheia) recebem showController() para sumirem sozinhos. Carro: chat com 215dp.
 - Publicação (pedido do usuário em 2026-11-13, vale sempre): toda versão nova deve ser publicada no main
   sem perguntar, e as antigas continuam disponíveis. O workflow cria uma Release numerada por versão
   (tag vX.Y.Z, arquivo AutoTV-X.Y.Z.apk, nunca apagada) e recria a "latest". Por isso, subir o

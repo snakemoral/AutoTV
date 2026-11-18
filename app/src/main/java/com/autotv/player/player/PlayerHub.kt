@@ -107,8 +107,10 @@ object PlayerHub {
         viewers.value = first
         val id = Store.youtubeId(item) ?: return
         viewersJob = scope.launch {
+            var wait = if (first < 0) 0L else 30_000L
             while (true) {
-                delay(30_000)
+                delay(wait)
+                wait = 30_000L
                 if (nowPlaying.value !== item) break
                 withContext(Dispatchers.IO) { runCatching { com.autotv.player.data.LiveChat.viewers(id) }.getOrNull() }
                     ?.let { if (nowPlaying.value === item) viewers.value = it }

@@ -394,7 +394,7 @@ class CarPlayerPresentation(
         chatPanel.addView(chatInfo, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER))
         // À direita, de cima a baixo da área do vídeo; fica visível mesmo quando os controles somem
         // (os controles, quando aparecem, ficam por cima dele).
-        root.addView(chatPanel, FrameLayout.LayoutParams(dp(270), -1, Gravity.END).apply {
+        root.addView(chatPanel, FrameLayout.LayoutParams(dp(215), -1, Gravity.END).apply {
             topMargin = dp(10); bottomMargin = dp(10); rightMargin = dp(16)
         })
     }

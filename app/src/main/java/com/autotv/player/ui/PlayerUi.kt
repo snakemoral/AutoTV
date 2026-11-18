@@ -95,6 +95,9 @@ fun PlayerSurface(
     var controlsVisible by remember { mutableStateOf(true) }
     var brightness by rememberSaveable { mutableFloatStateOf(1f) }
     var showOptions by remember { mutableStateOf(false) }
+    var showDescription by remember(item.id) { mutableStateOf(false) }
+    val liveNow by PlayerHub.isLive.collectAsState()
+    val chatOnNow by LiveChatPrefs.open.collectAsState()
 
     Box(modifier.background(Color.Black)) {
         if (carActive) {
@@ -125,6 +128,9 @@ fun PlayerSurface(
                         }
                         PlayerHub.player.addListener(listener)
                         tag = listener
+                        // Ao entrar ou sair da tela cheia este player é criado de novo: mostra os controles já
+                        // com o prazo de 3 s, para eles (e o título por cima) sumirem sozinhos.
+                        post { showController() }
                     }
                 },
                 onRelease = {
@@ -138,8 +144,9 @@ fun PlayerSurface(
                 val live by PlayerHub.isLive.collectAsState()
                 val chatId = if (item.kind == Kind.YOUTUBE) Store.youtubeId(item) else null
                 if (chatOn && live && chatId != null) {
+                    // Deixa livre, à direita, a barra de brilho.
                     FullscreenChat(chatId, Modifier.align(Alignment.CenterEnd).fillMaxHeight().fillMaxWidth(0.3f)
-                        .padding(top = 12.dp, bottom = 12.dp, end = 16.dp))
+                        .padding(top = 12.dp, bottom = 12.dp, end = 52.dp))
                 }
             }
             // Rádio (só áudio): logotipo grande e nome no centro, no lugar da tela preta.
@@ -205,10 +212,24 @@ fun PlayerSurface(
                 Modifier.align(Alignment.TopStart).fillMaxWidth().padding(start = 12.dp, top = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Toque no título: descrição do vídeo (vale também na tela cheia).
                 Text(
                     item.title, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    fontWeight = FontWeight.Medium, modifier = Modifier.weight(1f)
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.weight(1f)
+                        .clickable(enabled = item.kind == Kind.YOUTUBE) { showDescription = true }
+                        .padding(vertical = 10.dp)
                 )
+                if (fullscreen && item.kind == Kind.YOUTUBE && liveNow) {
+                    // Liga e desliga o chat da live sem sair da tela cheia.
+                    Text(
+                        "💬", fontSize = 20.sp,
+                        modifier = Modifier.clip(CircleShape)
+                            .background(if (chatOnNow) Color.White else Color.Transparent)
+                            .clickable { LiveChatPrefs.open.value = !chatOnNow }
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
                 if (hasOptions) {
                     IconButton(onClick = { showOptions = true }) {
                         Icon(Icons.Default.Settings, "Qualidade, áudio e legendas", tint = Color.White)
@@ -226,6 +247,10 @@ fun PlayerSurface(
     }
 
     if (showOptions) OptionsDialog(onDismiss = { showOptions = false })
+    if (showDescription) {
+        val details by PlayerHub.details.collectAsState()
+        DescriptionDialog(item, details) { showDescription = false }
+    }
 }
 
 @Composable
@@ -398,10 +423,14 @@ fun PlayerPanel(vm: MainViewModel, item: Item, onFullscreen: () -> Unit, onOpenC
                             style = MaterialTheme.typography.bodyMedium, color = Color.White)
                         val subs = details?.subscribers ?: -1
                         val watching by PlayerHub.viewers.collectAsState()
-                        val line = channelFacts(subs, if (isLive) watching else -1)
-                        if (line.isNotEmpty()) {
-                            Text(line, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        if (subs >= 0) {
+                            Text("${compactCount(subs)} inscritos", maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 style = MaterialTheme.typography.bodySmall, color = Color.LightGray)
+                        }
+                        // Em pé não cabe ao lado dos inscritos: fica numa linha só dele.
+                        if (isLive && watching >= 0) {
+                            Text("● ${compactCount(watching)} assistindo", maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.bodySmall, color = Color(0xFFFF6B81))
                         }
                     }
                 }
