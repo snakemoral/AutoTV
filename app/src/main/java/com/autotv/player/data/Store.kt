@@ -305,7 +305,7 @@ object Store {
 
     private fun writeItems(name: String, list: List<Item>) {
         val arr = JSONArray(); list.forEach { arr.put(itemToJson(it)) }
-        atomicWrite(File(dir, name), arr.toString())
+        writeLater(name, arr.toString())
     }
 
     private fun readItems(name: String): List<Item> {
@@ -317,7 +317,7 @@ object Store {
     private fun writeChannels(list: List<Channel>) {
         val arr = JSONArray()
         list.forEach { arr.put(JSONObject().put("u", it.url).put("n", it.name)) }
-        atomicWrite(File(dir, "following.json"), arr.toString())
+        writeLater("following.json", arr.toString())
     }
 
     private fun readChannels(): List<Channel> {
@@ -332,7 +332,7 @@ object Store {
             val items = JSONArray(); p.items.forEach { items.put(itemToJson(it)) }
             arr.put(JSONObject().put("id", p.id).put("name", p.name).put("src", p.source).put("items", items))
         }
-        atomicWrite(File(dir, "playlists.json"), arr.toString())
+        writeLater("playlists.json", arr.toString())
     }
 
     private fun readPlaylists(): List<Playlist> {
@@ -348,6 +348,11 @@ object Store {
                 items = List(items.length()) { itemFromJson(items.getJSONObject(it)) }
             )
         }
+    }
+
+    /** Grava em segundo plano, um arquivo de cada vez e na ordem pedida (a tela não espera o disco). */
+    private fun writeLater(name: String, text: String) {
+        io.execute { runCatching { atomicWrite(File(dir, name), text) } }
     }
 
     private fun atomicWrite(file: File, text: String) {

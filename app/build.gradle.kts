@@ -11,8 +11,8 @@ android {
         applicationId = "com.autotv.player"
         minSdk = 26
         targetSdk = 34
-        versionCode = 26
-        versionName = "0.9.4"
+        versionCode = 27
+        versionName = "0.9.5"
     }
 
     // Chave de debug fixa no repositório: assim cada build novo instala POR CIMA do anterior

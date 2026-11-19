@@ -1,5 +1,5 @@
 # Estado do projeto (para retomar após limite de uso)
-Última atualização: 2026-11-18 (v0.9.4; chat da tela cheia do celular desliza com offset e largura fixa, em vez de mudar a margem).
+Última atualização: 2026-11-19 (v0.9.5).
 
 - Repositório: github.com/snakemoral/AutoTV, branch main. Cada push compila sozinho (GitHub Actions) e
   publica o APK na Release "latest". Trabalhar no clone em /home/claude/autotv-repo.
@@ -112,9 +112,14 @@
   (entrar/sair da tela cheia) recebem showController() para sumirem sozinhos. Carro: chat com 215dp.
 - v0.9.3: espectadores junto do título na tela cheia do celular; chat encosta à direita quando os controles
   somem e se afasta da barra de brilho quando aparecem (celular: animateDpAsState; carro: moveChat/translationX).
+- v0.9.5 (revisão para a 1.0): arquivo publicado agora é AutoTV-X.Y.Z.apk, uma Release por versão marcada como
+  "latest" do GitHub (README aponta para /releases/latest); a Release fixa "latest" (AutoTV-debug.apk) foi
+  aposentada. Correções: Thumbs tenta de novo imagens que falharam depois de 2 min e limita o cache de ícones;
+  Store grava todos os arquivos em segundo plano (writeLater); MainViewModel.task não mostra cancelamento
+  como erro e conta tarefas simultâneas; lista do carro cancela downloads de imagens da lista anterior.
 - Publicação (pedido do usuário em 2026-11-13, vale sempre): toda versão nova deve ser publicada no main
   sem perguntar, e as antigas continuam disponíveis. O workflow cria uma Release numerada por versão
-  (tag vX.Y.Z, arquivo AutoTV-X.Y.Z.apk, nunca apagada) e recria a "latest". Por isso, subir o
+  (tag vX.Y.Z, arquivo AutoTV-X.Y.Z.apk, nunca apagada) e a marca como a mais recente do GitHub. Por isso, subir o
   versionName/versionCode em app/build.gradle.kts a cada versão. Esta sessão não pode criar Releases
   pela API; só o workflow cria.
 - Regra para quem continuar: LER o código antes de escrever; nunca sobrescrever arquivos inteiros sem ler.

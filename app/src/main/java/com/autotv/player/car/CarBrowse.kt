@@ -219,6 +219,15 @@ class CarBrowsePresentation(
     private val handler = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val gate = Semaphore(6)
+    /** Imagens sendo baixadas para a lista atual: canceladas quando a lista é trocada (antes, ao passar rápido
+     *  pelas abas, as imagens das listas antigas continuavam baixando e atrasavam as da lista nova). */
+    private var images = kotlinx.coroutines.SupervisorJob()
+
+    private fun clearGrid() {
+        images.cancel()
+        images = kotlinx.coroutines.SupervisorJob()
+        grid.removeAllViews()
+    }
     private val density get() = context.resources.displayMetrics.density
     private fun dp(v: Int) = (v * density).roundToInt()
 
@@ -420,7 +429,7 @@ class CarBrowsePresentation(
             message.visibility = View.VISIBLE
             if (hub) {
                 // Na tela inicial os filtros (e o "Atualizar") continuam visíveis mesmo sem lista.
-                grid.removeAllViews()
+                clearGrid()
                 builtFor = -1
                 scroll.visibility = View.VISIBLE
             } else scroll.visibility = View.GONE
@@ -435,7 +444,7 @@ class CarBrowsePresentation(
         builtFor = gridWidth
 
         if (compact) {
-            grid.removeAllViews()
+            clearGrid()
             for (i in items.indices) {
                 grid.addView(compactRow(items, i, items[i]), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
             }
@@ -450,7 +459,7 @@ class CarBrowsePresentation(
         val cardW = (gridWidth - gapPx * (cols - 1)) / cols
         val thumbH = cardW * 9 / 16
 
-        grid.removeAllViews()
+        clearGrid()
         for (start in items.indices step cols) {
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             for (i in start until minOf(start + cols, items.size)) {
@@ -521,7 +530,7 @@ class CarBrowsePresentation(
             }
             val ready = Thumbs.cached(url)
             if (ready != null) show(ready)
-            else scope.launch {
+            else scope.launch(images) {
                 val bmp = gate.withPermit { withContext(Dispatchers.IO) { Thumbs.load(url, 160) } }
                 if (bmp != null) show(bmp)
             }
@@ -584,7 +593,7 @@ class CarBrowsePresentation(
         if (url != null) {
             val ready = Thumbs.cached(url)
             if (ready != null) image.setImageBitmap(ready)
-            else scope.launch {
+            else scope.launch(images) {
                 val bmp = gate.withPermit { withContext(Dispatchers.IO) { Thumbs.load(url, 480) } }
                 if (bmp != null) image.setImageBitmap(bmp)
             }

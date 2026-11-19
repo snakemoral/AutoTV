@@ -16,8 +16,12 @@ object Thumbs {
     private val cache = object : LruCache<String, Bitmap>(24 * 1024 * 1024) {
         override fun sizeOf(key: String, value: Bitmap) = value.byteCount
     }
-    private val failed = HashSet<String>()
-    private val iconCache = HashMap<String, CarIcon>()
+    /** Endereços que falharam e quando: tenta de novo depois de 2 min (antes, uma queda de internet
+     *  deixava a miniatura em branco até fechar o app). */
+    private val failed = HashMap<String, Long>()
+    private const val RETRY_MS = 2 * 60 * 1000L
+    /** Ícones das listas nativas do carro: limitado, para não acumular imagens na memória. */
+    private val iconCache = object : LruCache<String, CarIcon>(150) {}
 
     private var appContext: android.content.Context? = null
 
@@ -27,7 +31,13 @@ object Thumbs {
 
     fun load(url: String, targetWidth: Int = 400): Bitmap? {
         cache.get(url)?.let { return it }
-        synchronized(failed) { if (url in failed) return null }
+        synchronized(failed) {
+            val at = failed[url]
+            if (at != null) {
+                if (android.os.SystemClock.elapsedRealtime() - at < RETRY_MS) return null
+                failed.remove(url)
+            }
+        }
         return try {
             if (url.startsWith("content://")) {
                 // Vídeo do próprio celular: pede a miniatura ao Android.
@@ -52,13 +62,16 @@ object Thumbs {
             cache.put(url, bmp)
             bmp
         } catch (e: Exception) {
-            synchronized(failed) { failed += url }
+            synchronized(failed) {
+                failed[url] = android.os.SystemClock.elapsedRealtime()
+                if (failed.size > 500) failed.clear()
+            }
             null
         }
     }
 
     fun carIcon(url: String, bmp: Bitmap): CarIcon = synchronized(iconCache) {
-        iconCache.getOrPut(url) { CarIcon.Builder(IconCompat.createWithBitmap(bmp)).build() }
+        iconCache.get(url) ?: CarIcon.Builder(IconCompat.createWithBitmap(bmp)).build().also { iconCache.put(url, it) }
     }
 
     private val placeholder: CarIcon by lazy {

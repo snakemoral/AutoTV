@@ -1,10 +1,10 @@
-# AutoTV (v0.9.4)
+# AutoTV (v0.9.5)
 
 Player de YouTube, TV por lista (IPTV/M3U), vídeos do celular e navegador de internet para Android,
 com tela própria no Android Auto.
 
-**Baixar o APK:** [versão mais recente](https://github.com/snakemoral/AutoTV/releases/tag/latest)
-(arquivo `AutoTV-debug.apk`).
+**Baixar o APK:** [versão mais recente](https://github.com/snakemoral/AutoTV/releases/latest)
+(arquivo `AutoTV-` com o número da versão, por exemplo `AutoTV-1.0.0.apk`).
 
 **Versões anteriores:** ficam todas na [página de versões](https://github.com/snakemoral/AutoTV/releases).
 Para voltar a uma versão mais antiga, desinstale o AutoTV antes de instalar o APK antigo.
@@ -71,7 +71,7 @@ histórico da conta. Para desligar, use o interruptor "Sincronizar com o YouTube
 na sua conta Google, o YouTube não registra nada.
 
 ## Instalar
-1. Baixe o `AutoTV-debug.apk` no link acima e instale. Versões novas instalam por cima da anterior.
+1. Baixe o APK no link acima e instale. Versões novas instalam por cima da anterior.
 2. Para aparecer no Android Auto: ative o modo desenvolvedor do Android Auto (10 toques em "Versão"),
    ligue **Fontes desconhecidas** e confira "Personalizar tela de início". Se o app não aparecer,
    instale com KingInstaller + Shizuku.

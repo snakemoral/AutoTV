@@ -53,16 +53,23 @@ class MainViewModel : ViewModel() {
     private var followingFeedKey: String? = null
 
     /** Executa [block] em IO mostrando "ocupado" e reportando erros. */
+    private var running = 0
+
     private fun <T> task(block: suspend () -> T, onDone: (T) -> Unit = {}) {
         viewModelScope.launch {
+            running++
             busy.value = true
             try {
                 val result = withContext(Dispatchers.IO) { block() }
                 onDone(result)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e // tela fechada ou tarefa trocada: não é erro para mostrar
             } catch (e: Exception) {
                 message.value = e.message ?: e.javaClass.simpleName
             } finally {
-                busy.value = false
+                // Só para de mostrar "carregando" quando todas as tarefas terminaram.
+                running--
+                busy.value = running > 0
             }
         }
     }
