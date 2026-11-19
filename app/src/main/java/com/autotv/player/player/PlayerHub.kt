@@ -234,7 +234,10 @@ object PlayerHub {
                         retries++
                         status.value = null
                         loading.value = true
-                        scope.launch { delay(2_000); player.prepare() }
+                        // Guardado em netJob: se o usuário parar ou trocar de canal nesses 2 s, a nova
+                        // tentativa é cancelada (antes, o canal parado podia voltar a tocar sozinho).
+                        netJob?.cancel()
+                        netJob = scope.launch { delay(2_000); player.prepare() }
                     }
                     item?.kind == Kind.YOUTUBE && retries < 2 -> {
                         // O link do stream pode ter expirado: resolve de novo e continua de onde parou.
@@ -793,7 +796,9 @@ object PlayerHub {
             source = if (sources.size == 1) sources[0] else MergingMediaSource(*sources.toTypedArray())
         }
         if (streamMode()) setTextDisabled(selSub < 0)
-        player.setMediaSource(source, pos)
+        // Live aberta agora (ou recarregada): começa no "ao vivo". Com posição 0, numa live em que dá
+        // para voltar no tempo, o player começava no início do trecho guardado (minutos ou horas atrás).
+        if (m.isLive && !keepPosition) player.setMediaSource(source) else player.setMediaSource(source, pos)
         player.prepare()
         player.playWhenReady = wasPlaying
         if (streamMode()) publishStreamOptions()

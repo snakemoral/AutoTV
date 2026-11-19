@@ -37,9 +37,10 @@ object Account {
     private lateinit var sp: SharedPreferences
     val signedIn = MutableStateFlow(false)
 
-    private var refreshToken: String? = null
-    private var accessToken: String? = null
-    private var accessExpiresAt = 0L
+    // Lidos e escritos por linhas de execução diferentes (tela e rede).
+    @Volatile private var refreshToken: String? = null
+    @Volatile private var accessToken: String? = null
+    @Volatile private var accessExpiresAt = 0L
 
     class DeviceCode(val userCode: String, val url: String, val deviceCode: String, val intervalSec: Int, val expiresAt: Long)
 
@@ -291,6 +292,7 @@ object Account {
     /** Os avisos saem um de cada vez, em ordem, fora da thread principal. */
     private val reporter = java.util.concurrent.Executors.newSingleThreadExecutor()
     private const val CPN_ALPHABET = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_"
+    private val random = java.security.SecureRandom()
 
     private fun trackingFor(videoId: String): Tracking? {
         tracking?.let { if (it.videoId == videoId) return it }
@@ -301,7 +303,7 @@ object Account {
         val t = json.optJSONObject("playbackTracking") ?: return null
         val playback = t.optJSONObject("videostatsPlaybackUrl")?.optString("baseUrl")?.takeIf { it.isNotBlank() } ?: return null
         val watchtime = t.optJSONObject("videostatsWatchtimeUrl")?.optString("baseUrl")?.takeIf { it.isNotBlank() }
-        val cpn = String(CharArray(16) { CPN_ALPHABET[java.security.SecureRandom().nextInt(64)] })
+        val cpn = String(CharArray(16) { CPN_ALPHABET[random.nextInt(64)] })
         return Tracking(videoId, playback, watchtime, cpn).also { tracking = it }
     }
 

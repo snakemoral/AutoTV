@@ -1,6 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ícone do AutoTV: play branco com uma estrada atravessando por dentro (desenho reduzido para caber na
+     área segura do ícone adaptável). -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#FFFFFFFF" android:pathData="M30,36h48a4,4 0 0 1 4,4v28a4,4 0 0 1 -4,4H30a4,4 0 0 1 -4,-4V40a4,4 0 0 1 4,-4z" />
-    <path android:fillColor="#FF1B1F3B" android:pathData="M48,45l16,9l-16,9z" />
+    <group android:pivotX="54" android:pivotY="54" android:scaleX="0.66" android:scaleY="0.66" android:translateX="1">
+        <path android:fillColor="#FFFFFFFF" android:pathData="M34,24 Q30,22 30,27 L30,81 Q30,86 34,84 L82,57 Q86,54 82,51 Z" />
+        <group>
+            <clip-path android:pathData="M34,24 Q30,22 30,27 L30,81 Q30,86 34,84 L82,57 Q86,54 82,51 Z" />
+            <path android:fillColor="#FF2E2A3D" android:pathData="M30,60 L84,54 L30,92 Z" />
+            <path android:strokeColor="#FFFFD166" android:strokeWidth="2.5" android:pathData="M30.00,76.00 L35.53,73.68 M40.14,71.74 L45.67,69.42 M50.28,67.48 L55.82,65.16 M60.43,63.22 L65.96,60.90 M70.57,58.96 L76.10,56.64" />
+        </group>
+    </group>
 </vector>

@@ -131,10 +131,10 @@ class VideoBrowseScreen(
     }
 }
 
-/** A interface da lista de vídeos, desenhada numa tela virtual. */
 /** Itens com este começo no id são pastas (grupos de canais da TV), não vídeos. */
 const val GROUP_PREFIX = "grp:"
 
+/** A interface da lista de vídeos, desenhada numa tela virtual. */
 class CarBrowsePresentation(
     ctx: Context,
     display: Display,
@@ -221,11 +221,12 @@ class CarBrowsePresentation(
     private val gate = Semaphore(6)
     /** Imagens sendo baixadas para a lista atual: canceladas quando a lista é trocada (antes, ao passar rápido
      *  pelas abas, as imagens das listas antigas continuavam baixando e atrasavam as da lista nova). */
-    private var images = kotlinx.coroutines.SupervisorJob()
+    // Filho do escopo da tela: ao fechar a tela, os downloads de imagens também param.
+    private var images = kotlinx.coroutines.SupervisorJob(scope.coroutineContext[kotlinx.coroutines.Job])
 
     private fun clearGrid() {
         images.cancel()
-        images = kotlinx.coroutines.SupervisorJob()
+        images = kotlinx.coroutines.SupervisorJob(scope.coroutineContext[kotlinx.coroutines.Job])
         grid.removeAllViews()
     }
     private val density get() = context.resources.displayMetrics.density
@@ -268,6 +269,7 @@ class CarBrowsePresentation(
     override fun release() {
         if (::scroll.isInitialized) onScrollSaved(scroll.scrollY)
         scope.cancel()
+        handler.removeCallbacksAndMessages(null)
         try { dismiss() } catch (_: Exception) { }
     }
 

@@ -103,12 +103,12 @@ class HubScreen(ctx: CarContext) : Screen(ctx) {
         tabs += Chip("local", "Celular", section == "local")
         tabs += Chip("tv", "TV", section == "tv")
         tabs += Chip("web", "Web")
-        tabs += Chip("favs", "Favoritos")
+        tabs += Chip("favs", "Favoritos", section == "favs")
 
         if (section == "tv") { pushTv(p, tabs); return }
 
         val filters = ArrayList<Chip>()
-        if (section != "history" || HistorySync.enabled) filters += Chip("refresh", "⟳ Atualizar")
+        if (section != "favs" && (section != "history" || HistorySync.enabled)) filters += Chip("refresh", "⟳ Atualizar")
         when (section) {
             "trending" -> {
                 filters += Chip("all", "Tudo", filter() == "all")
@@ -130,9 +130,13 @@ class HubScreen(ctx: CarContext) : Screen(ctx) {
         when {
             e != null -> p.showMessage("Não foi possível carregar: $e")
             list == null -> p.showMessage("Carregando…")
-            list.isEmpty() -> p.showMessage(if (section == "history") "Nada assistido ainda." else "Nenhum vídeo encontrado")
-            // Rádios: uma coluna só, com o logotipo pequeno ao lado do nome.
-            else -> p.showItems(list, compact = section == "radio")
+            list.isEmpty() -> p.showMessage(when (section) {
+                "history" -> "Nada assistido ainda."
+                "favs" -> "Nenhum favorito ainda. Toque no coração de um vídeo, canal ou rádio no celular."
+                else -> "Nenhum vídeo encontrado"
+            })
+            // Rádios, canais de TV e favoritos sem vídeos do YouTube: uma coluna com ícone pequeno.
+            else -> p.showItems(list, compact = section == "radio" || (section == "favs" && list.none { it.kind == Kind.YOUTUBE }))
         }
     }
 
@@ -181,7 +185,6 @@ class HubScreen(ctx: CarContext) : Screen(ctx) {
                 ui?.let { push(it) }
             }
             "web" -> screenManager.push(BrowserScreen(carContext))
-            "favs" -> screenManager.push(PagedScreen(carContext, "Favoritos") { itemEntries(Store.favorites.value) })
             "search" -> screenManager.push(YouTubeSearchScreen(carContext))
             else -> if (id != section) {
                 section = id
@@ -241,6 +244,8 @@ class HubScreen(ctx: CarContext) : Screen(ctx) {
                         Store.history.value
                     }
                     "local" -> withContext(Dispatchers.IO) { LocalVideos.list(app) }
+                    // Favoritos: aba da própria tela inicial, no mesmo visual (antes abria a lista padrão do Android Auto).
+                    "favs" -> Store.favorites.value
                     else -> emptyList()
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {

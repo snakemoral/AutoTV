@@ -87,7 +87,6 @@ object Store {
     }
 
     fun clearHistory() = synchronized(lock) {
-        _history.value = emptyList()
         // Com a conta conectada, o que foi limpo aqui não volta na próxima sincronização
         // (o histórico da conta, no YouTube, não é apagado).
         _history.value.forEach { hidden += positionKey(it) }

@@ -1,8 +1,8 @@
 # Estado do projeto (para retomar após limite de uso)
-Última atualização: 2026-11-19 (v0.9.5).
+Última atualização: 2026-11-19 (v1.0.0).
 
 - Repositório: github.com/snakemoral/AutoTV, branch main. Cada push compila sozinho (GitHub Actions) e
-  publica o APK na Release "latest". Trabalhar no clone em /home/claude/autotv-repo.
+  publica o APK numa Release por versão (AutoTV-X.Y.Z.apk), marcada como a mais recente. Trabalhar no clone em /home/claude/autotv-repo.
 - v0.2.0 compilou e foi testada pelo usuário no celular e no carro (YouTube, player e controles funcionam).
 - v0.3.0 (pedidos do usuário após o teste):
   1. Carro: barra do Android Auto no player reduzida a um botão (o mínimo exigido).
@@ -117,6 +117,13 @@
   aposentada. Correções: Thumbs tenta de novo imagens que falharam depois de 2 min e limita o cache de ícones;
   Store grava todos os arquivos em segundo plano (writeLater); MainViewModel.task não mostra cancelamento
   como erro e conta tarefas simultâneas; lista do carro cancela downloads de imagens da lista anterior.
+- v1.0.0: ícone novo (play com estrada, fundo laranja/rosa; ic_launcher_fg/bg/mono, adaptável com versão
+  monocromática). Revisão completa: Store.clearHistory não lembrava os vídeos limpos (zerava antes de
+  anotar); PlayerHub: nova tentativa de canal de TV em netJob (podia voltar a tocar depois de parar) e lives
+  abrem no "ao vivo" (setMediaSource sem posição); MainViewModel: feedJob/followingJob evitam que uma lista
+  antiga substitua a nova, importação do Takeout lida aos poucos (zip grande estourava a memória), seguir
+  canal usa Store.isFollowing/setFollowing; busca em lista de TV com chave por identidade; carro: downloads
+  de imagens presos ao escopo da tela, handler limpo ao fechar telas, Favoritos virou aba do HubScreen.
 - Publicação (pedido do usuário em 2026-11-13, vale sempre): toda versão nova deve ser publicada no main
   sem perguntar, e as antigas continuam disponíveis. O workflow cria uma Release numerada por versão
   (tag vX.Y.Z, arquivo AutoTV-X.Y.Z.apk, nunca apagada) e a marca como a mais recente do GitHub. Por isso, subir o

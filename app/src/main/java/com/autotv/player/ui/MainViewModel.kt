@@ -55,7 +55,7 @@ class MainViewModel : ViewModel() {
     /** Executa [block] em IO mostrando "ocupado" e reportando erros. */
     private var running = 0
 
-    private fun <T> task(block: suspend () -> T, onDone: (T) -> Unit = {}) {
+    private fun <T> task(block: suspend () -> T, onDone: (T) -> Unit = {}): Job =
         viewModelScope.launch {
             running++
             busy.value = true
@@ -72,7 +72,6 @@ class MainViewModel : ViewModel() {
                 busy.value = running > 0
             }
         }
-    }
 
     fun clearMessage() { message.value = null }
 
@@ -216,13 +215,22 @@ class MainViewModel : ViewModel() {
     }
 
     /** [force] recarrega a aba; [refresh] ignora também o que estava guardado e busca de novo no YouTube. */
+    private var feedJob: Job? = null
+
     fun selectHome(section: HomeSection, force: Boolean = false, refresh: Boolean = false) {
         homeSection.value = section
         if (section == HomeSection.HISTORY) return
         if (!force && !refresh && feed.value?.first == section) return
+        // Só a aba escolhida por último carrega: trocando rápido (Em alta -> Shorts), a lista que chegasse
+        // atrasada substituía a da aba aberta e a tela ficava vazia.
+        feedJob?.cancel()
+        feedJob = loadFeed(section, refresh)
+    }
+
+    private fun loadFeed(section: HomeSection, refresh: Boolean): Job {
         // O YouTube acabou com a página "Em alta" antiga: aqui ela é a mistura das categorias em alta
         // (música, jogos, filmes, ao vivo), a mesma lista que o carro mostra em "YouTube".
-        if (section == HomeSection.LIVE) task({ YouTube.kiosk("live") }) { feed.value = section to it }
+        return if (section == HomeSection.LIVE) task({ YouTube.kiosk("live") }) { feed.value = section to it }
         else if (section == HomeSection.SHORTS) task({ YouTube.shorts() }) { feed.value = section to it }
         else {
             val cat = YouTube.CATEGORIES.firstOrNull { it.id == trendingCategory.value }
@@ -240,12 +248,14 @@ class MainViewModel : ViewModel() {
     }
 
     // ---- Canais seguidos (no lugar do login) ----
-    fun isFollowing(url: String?, list: List<Channel>) = url != null && list.any { it.url == url }
+    /** [list] só faz a tela se atualizar quando a lista muda; a comparação reconhece o mesmo canal com
+     *  endereços diferentes (como no player). */
+    @Suppress("UNUSED_PARAMETER")
+    fun isFollowing(url: String?, list: List<Channel>) = Store.isFollowing(url)
 
     fun toggleFollow(item: Item) {
         val url = item.channelUrl ?: return
-        if (following.value.any { it.url == url }) Store.unfollow(url)
-        else Store.follow(Channel(url, item.group ?: "Canal"))
+        Store.setFollowing(Channel(url, item.group ?: "Canal"), !Store.isFollowing(url))
     }
 
     fun unfollow(url: String) = Store.unfollow(url)
@@ -253,11 +263,16 @@ class MainViewModel : ViewModel() {
     /** Importa as inscrições do Google Takeout: aceita o subscriptions.csv ou o .zip inteiro do Takeout. */
     fun importSubscriptions(resolver: ContentResolver, uri: Uri) {
         task({
-            val bytes = resolver.openInputStream(uri)?.use { it.readBytes() } ?: error("Não foi possível abrir o arquivo")
-            val text = if (bytes.size > 3 && bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte()) {
-                // É o .zip do Takeout: procura o CSV de inscrições lá dentro.
-                var found: String? = null
-                java.util.zip.ZipInputStream(bytes.inputStream()).use { zip ->
+            // Lido aos poucos: o .zip do Takeout pode ter centenas de MB (com vídeos) e não cabe na memória.
+            val input = resolver.openInputStream(uri)?.buffered() ?: error("Não foi possível abrir o arquivo")
+            val text = input.use { stream ->
+                stream.mark(4)
+                val isZip = stream.read() == 'P'.code && stream.read() == 'K'.code
+                stream.reset()
+                if (isZip) {
+                    // É o .zip do Takeout: procura o CSV de inscrições lá dentro.
+                    var found: String? = null
+                    val zip = java.util.zip.ZipInputStream(stream)
                     while (found == null) {
                         val e = zip.nextEntry ?: break
                         if (!e.isDirectory && e.name.endsWith(".csv", true)) {
@@ -265,9 +280,9 @@ class MainViewModel : ViewModel() {
                             if (CHANNEL_ID.containsMatchIn(t)) found = t
                         }
                     }
-                }
-                found ?: error("Não achei o arquivo de inscrições dentro do .zip")
-            } else bytes.toString(Charsets.UTF_8)
+                    found ?: error("Não achei o arquivo de inscrições dentro do .zip")
+                } else stream.readBytes().toString(Charsets.UTF_8)
+            }
 
             val channels = text.lineSequence().mapNotNull { line ->
                 val id = CHANNEL_ID.find(line)?.value ?: return@mapNotNull null
@@ -338,19 +353,26 @@ class MainViewModel : ViewModel() {
         followingFeedKey = key
         if (!Account.signedIn.value && following.value.isEmpty()) { followingFeed.value = emptyList(); return }
         followingLoading.value = true
-        viewModelScope.launch {
+        // Uma carga por vez: a mais nova cancela a anterior (senão a antiga podia chegar depois e ganhar).
+        followingJob?.cancel()
+        followingJob = viewModelScope.launch {
+            val me = coroutineContext[Job]
             try {
                 followingFeed.value = withContext(Dispatchers.IO) { Account.followingItems(force) }
                 followingError.value = null
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 followingFeed.value = emptyList()
                 followingError.value = e.message ?: e.javaClass.simpleName
             } finally {
-                followingLoading.value = false
+                // Cancelada por uma carga mais nova: quem desliga o "carregando" é a nova.
+                if (followingJob === me) followingLoading.value = false
             }
         }
     }
 
+    private var followingJob: Job? = null
     val followingLoading = MutableStateFlow(false)
     val followingError = MutableStateFlow<String?>(null)
 

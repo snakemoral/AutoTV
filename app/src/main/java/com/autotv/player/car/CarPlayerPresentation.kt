@@ -211,6 +211,8 @@ class CarPlayerPresentation(
 
     override fun release() {
         scope.cancel()
+        // Tarefas agendadas (soltar o toque, esconder aviso/controles) não rodam depois de a tela fechar.
+        handler.removeCallbacksAndMessages(null)
         try { dismiss() } catch (_: Exception) { }
     }
 

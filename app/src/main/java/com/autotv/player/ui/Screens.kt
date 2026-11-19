@@ -485,7 +485,9 @@ fun PlaylistsTab(vm: MainViewModel) {
 @Composable
 fun PlaylistDetail(vm: MainViewModel, playlist: Playlist, onBack: () -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
-    val filtered = remember(playlist, query) {
+    // Chave pela identidade da lista (não pelo conteúdo): comparar listas de TV com milhares de canais a
+    // cada letra digitada deixava a busca lenta.
+    val filtered = remember(System.identityHashCode(playlist.items), query) {
         if (query.isBlank()) playlist.items
         else playlist.items.filter {
             it.title.contains(query, ignoreCase = true) || (it.group?.contains(query, ignoreCase = true) == true)
