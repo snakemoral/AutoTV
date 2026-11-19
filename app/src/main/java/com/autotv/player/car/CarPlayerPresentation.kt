@@ -91,7 +91,6 @@ class CarPlayerPresentation(
     private lateinit var settings: FrameLayout
     private lateinit var settingsList: LinearLayout
     private lateinit var settingsTabs: List<TextView>
-    private lateinit var settingsPageLabel: TextView
 
     private lateinit var avatarView: ImageView
     private lateinit var likePill: TextView
@@ -109,7 +108,6 @@ class CarPlayerPresentation(
     private var controlsVisible = true
     private var settingsOpen = false
     private var settingsTab = 0
-    private var settingsPage = 0
     private var lastInteraction = SystemClock.uptimeMillis()
     private var ticker: Runnable? = null
     private val jobs = ArrayList<Job>()
@@ -213,6 +211,8 @@ class CarPlayerPresentation(
         scope.cancel()
         // Tarefas agendadas (soltar o toque, esconder aviso/controles) não rodam depois de a tela fechar.
         handler.removeCallbacksAndMessages(null)
+        settingsSmooth.cancel()
+        descSmooth.cancel()
         try { dismiss() } catch (_: Exception) { }
     }
 
@@ -694,68 +694,92 @@ class CarPlayerPresentation(
     override fun onScroll(distanceX: Float, distanceY: Float) {
         if (descriptionOpen) {
             // Com a descrição aberta, arrastar rola o texto.
-            descScroll.scrollBy(0, distanceY.roundToInt())
+            descSmooth.drag(distanceY)
             return
         }
-        if (settingsOpen || !::brightness.isInitialized) return
+        if (settingsOpen) { kick(); settingsSmooth.drag(distanceY); return }
+        if (!::brightness.isInitialized) return
         if (kotlin.math.abs(distanceY) < kotlin.math.abs(distanceX)) return
         showControls()
         stepBrightness(distanceY / root.height.coerceAtLeast(1) * 1.3f)
     }
 
+    /** Dedo solto com velocidade: continua a rolagem da descrição ou dos ajustes, se abertos. */
+    override fun onFling(velocityX: Float, velocityY: Float) {
+        when {
+            descriptionOpen -> descSmooth.release(velocityY)
+            settingsOpen -> settingsSmooth.release(velocityY)
+        }
+    }
+
     // ---- painel de ajustes ----
 
+    /**
+     * Ajustes (qualidade, áudio, legendas) no mesmo visual da tela inicial: abas e opções são botões
+     * arredondados que se distribuem em linhas, então muitas opções aparecem de uma vez, sem páginas.
+     * Se ainda não couberem, arrastar o dedo rola a lista.
+     */
     private fun buildSettings() {
         settings = FrameLayout(context).apply {
             visibility = View.GONE
-            setBackgroundColor(0xAA000000.toInt())
+            setBackgroundColor(0x99000000.toInt())
             isClickable = true
             setOnClickListener { closeSettings() }
         }
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            background = rounded(0xF2202024.toInt(), dp(20))
-            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = rounded(0xF2121216.toInt(), dp(22))
+            setPadding(dp(16), dp(12), dp(12), dp(14))
             isClickable = true
         }
-        val tabs = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        val header = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val names = listOf("Qualidade", "Áudio", "Legendas")
         settingsTabs = names.mapIndexed { i, n ->
             TextView(context).apply {
                 text = n
+                isSingleLine = true
                 gravity = Gravity.CENTER
-                setTextColor(Color.WHITE)
-                setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
-                setPadding(dp(8), dp(10), dp(8), dp(10))
-                setOnClickListener { kick(); settingsTab = i; settingsPage = 0; refreshSettings() }
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+                setPadding(dp(16), dp(9), dp(16), dp(9))
+                setOnClickListener { kick(); settingsTab = i; refreshSettings() }
             }
         }
-        settingsTabs.forEach { tabs.addView(it, LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(dp(3), 0, dp(3), 0) }) }
-        card.addView(tabs)
+        settingsTabs.forEach { header.addView(it, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(8) }) }
+        header.addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
+        header.addView(roundIcon(R.drawable.ic_close, "Fechar") { closeSettings() })
+        card.addView(header)
 
         settingsList = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        card.addView(settingsList, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(8) })
-
-        val pager = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        val prev = pill("◀") { settingsPage = (settingsPage - 1).coerceAtLeast(0); refreshSettings() }
-        val next = pill("▶") { settingsPage++; refreshSettings() }
-        settingsPageLabel = TextView(context).apply {
-            setTextColor(0xCCFFFFFF.toInt()); setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f); gravity = Gravity.CENTER
+        settingsScroll = android.widget.ScrollView(context).apply {
+            isVerticalScrollBarEnabled = true
+            addView(settingsList, ViewGroup.LayoutParams(-1, -2))
         }
-        val close = pill("Fechar") { closeSettings() }
-        pager.addView(prev)
-        pager.addView(settingsPageLabel, LinearLayout.LayoutParams(0, -2, 1f))
-        pager.addView(next)
-        pager.addView(close, LinearLayout.LayoutParams(-2, -2).apply { leftMargin = dp(16) })
-        card.addView(pager)
+        card.addView(settingsScroll, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(12) })
 
-        settings.addView(card, FrameLayout.LayoutParams(0, -1, Gravity.CENTER).apply { setMargins(0, dp(24), 0, dp(24)) })
+        settings.addView(card, FrameLayout.LayoutParams(0, -1, Gravity.CENTER).apply { setMargins(0, dp(20), 0, dp(20)) })
         root.addView(settings, FrameLayout.LayoutParams(-1, -1))
+    }
+
+    private lateinit var settingsScroll: android.widget.ScrollView
+    private val settingsSmooth = SmoothScroll(
+        target = { if (::settingsScroll.isInitialized) settingsScroll else null },
+        fling = { v, speed -> (v as android.widget.ScrollView).fling(speed) },
+        stop = { v -> (v as android.widget.ScrollView).fling(0) }
+    )
+    private val descSmooth = SmoothScroll(
+        target = { if (::descScroll.isInitialized) descScroll else null },
+        fling = { v, speed -> (v as android.widget.ScrollView).fling(speed) },
+        stop = { v -> (v as android.widget.ScrollView).fling(0) }
+    )
+
+    /** Botão do menu de ajustes no estilo das abas da tela inicial (branco = escolhido). */
+    private fun styleChip(view: TextView, selected: Boolean) {
+        view.background = rounded(if (selected) Color.WHITE else 0x33FFFFFF, dp(20))
+        view.setTextColor(if (selected) Color.BLACK else Color.WHITE)
     }
 
     private fun openSettings(tab: Int) {
         settingsTab = tab
-        settingsPage = 0
         settingsOpen = true
         val card = settings.getChildAt(0)
         card.layoutParams = (card.layoutParams as FrameLayout.LayoutParams).apply {
@@ -778,38 +802,49 @@ class CarPlayerPresentation(
     }
 
     private fun refreshSettings() {
-        settingsTabs.forEachIndexed { i, t ->
-            t.background = rounded(if (i == settingsTab) 0xFFFF2D55.toInt() else 0x33FFFFFF, dp(18))
-        }
+        settingsTabs.forEachIndexed { i, t -> styleChip(t, i == settingsTab) }
         val options = optionsForTab()
-        // Quantas linhas cabem: altura do painel menos abas, paginação e margens.
-        val availDp = (root.height / density) - 48 - 60 - 56 - 40
-        val perPage = (availDp / 50f).toInt().coerceIn(3, 8)
-        val pages = maxOf(1, (options.size + perPage - 1) / perPage)
-        if (settingsPage >= pages) settingsPage = pages - 1
-
         settingsList.removeAllViews()
+        settingsScroll.scrollTo(0, 0)
         if (options.isEmpty()) {
             settingsList.addView(TextView(context).apply {
                 text = "Sem opções disponíveis para este vídeo"
                 setTextColor(0xCCFFFFFF.toInt())
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
-                setPadding(dp(8), dp(16), dp(8), dp(16))
+                setPadding(dp(4), dp(16), dp(4), dp(16))
             })
-        } else {
-            options.drop(settingsPage * perPage).take(perPage).forEach { opt ->
-                settingsList.addView(TextView(context).apply {
-                    text = (if (opt.selected) "✓  " else "     ") + opt.label
-                    setTextColor(Color.WHITE)
-                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding(dp(14), 0, dp(14), 0)
-                    background = rounded(if (opt.selected) 0x44FFFFFF else 0x14FFFFFF, dp(14))
-                    setOnClickListener { kick(); choose(opt) }
-                }, LinearLayout.LayoutParams(-1, dp(46)).apply { setMargins(0, dp(2), 0, dp(2)) })
+            return
+        }
+        // Distribui as opções em linhas, quebrando quando não cabem (como as abas da tela inicial).
+        val card = settings.getChildAt(0)
+        val width = (card.layoutParams.width.takeIf { it > 0 } ?: card.width) - card.paddingLeft - card.paddingRight
+        val gap = dp(8)
+        var row: LinearLayout? = null
+        var used = 0
+        for (opt in options) {
+            val v = TextView(context).apply {
+                text = (if (opt.selected) "✓ " else "") + opt.label
+                isSingleLine = true
+                gravity = Gravity.CENTER
+                setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+                setPadding(dp(18), dp(11), dp(18), dp(11))
+                styleChip(this, opt.selected)
+                setOnClickListener { kick(); choose(opt) }
+            }
+            v.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
+            val w = minOf(v.measuredWidth + dp(2), width)
+            val current = row
+            if (current == null || used + gap + w > width) {
+                val r = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+                settingsList.addView(r, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
+                r.addView(v, LinearLayout.LayoutParams(w, -2))
+                row = r
+                used = w
+            } else {
+                current.addView(v, LinearLayout.LayoutParams(w, -2).apply { leftMargin = gap })
+                used += gap + w
             }
         }
-        settingsPageLabel.text = "${settingsPage + 1} / $pages"
     }
 
     private fun choose(opt: Option) {

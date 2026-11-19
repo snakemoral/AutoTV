@@ -120,6 +120,10 @@ fun AppRoot(vm: MainViewModel) {
         return
     }
 
+    // Voltar em outra aba leva para Início; só na tela inicial o voltar sai do app.
+    // (Os voltar de dentro de cada aba, como fechar uma busca ou voltar página no navegador, vêm antes.)
+    BackHandler(enabled = tab != 0) { tab = 0 }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
@@ -240,6 +244,9 @@ fun HomeTab(vm: MainViewModel) {
     val signedIn by vm.signedIn.collectAsState()
 
     LaunchedEffect(Unit) { vm.selectHome(section) }
+    // Voltar fecha a busca (ou a lista de um canal); depois, de outra seção volta para "Em alta".
+    BackHandler(enabled = resultsFor != null) { vm.clearResults() }
+    BackHandler(enabled = resultsFor == null && section != HomeSection.TRENDING) { vm.selectHome(HomeSection.TRENDING) }
 
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -354,6 +361,7 @@ fun FollowingTab(vm: MainViewModel) {
     val loading by vm.followingLoading.collectAsState()
     val feedError by vm.followingError.collectAsState()
     var manage by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = manage) { manage = false }
     val ctx = LocalContext.current
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) vm.importSubscriptions(ctx.contentResolver, uri)
@@ -453,6 +461,8 @@ fun PlaylistsTab(vm: MainViewModel) {
     var openId by rememberSaveable { mutableStateOf<String?>(null) }
     var showAdd by remember { mutableStateOf(false) }
     val open = lists.firstOrNull { it.id == openId }
+    // Voltar com uma lista de canais aberta volta para as listas.
+    BackHandler(enabled = open != null) { openId = null }
 
     Box(Modifier.fillMaxSize()) {
         if (open == null) {
@@ -573,6 +583,7 @@ fun LibraryTab(vm: MainViewModel) {
 @Composable
 fun TvRadioTab(vm: MainViewModel) {
     var radio by rememberSaveable { mutableStateOf(false) }
+    BackHandler(enabled = radio) { radio = false }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(selected = !radio, onClick = { radio = false }, label = { Text("TV") })

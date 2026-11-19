@@ -1,5 +1,5 @@
 # Estado do projeto (para retomar após limite de uso)
-Última atualização: 2026-11-19 (v1.0.0).
+Última atualização: 2026-11-19 (v1.0.1).
 
 - Repositório: github.com/snakemoral/AutoTV, branch main. Cada push compila sozinho (GitHub Actions) e
   publica o APK numa Release por versão (AutoTV-X.Y.Z.apk), marcada como a mais recente. Trabalhar no clone em /home/claude/autotv-repo.
@@ -124,6 +124,11 @@
   antiga substitua a nova, importação do Takeout lida aos poucos (zip grande estourava a memória), seguir
   canal usa Store.isFollowing/setFollowing; busca em lista de TV com chave por identidade; carro: downloads
   de imagens presos ao escopo da tela, handler limpo ao fechar telas, Favoritos virou aba do HubScreen.
+- v1.0.1: celular: BackHandlers (aba -> Início; busca/canal -> fecha; seção -> Em alta; lista de canais,
+  Rádio e "gerenciar canais" -> fecham). Carro: menu da engrenagem refeito (abas e opções como botões em linhas,
+  sem páginas, rolagem por arrasto, botão ic_close). Rolagem: car/SmoothScroll.kt distribui o arrasto do
+  Android Auto pelos quadros, para arremessos antigos ao arrastar e modera/limita a velocidade do arremesso;
+  usado nas listas, navegador, ajustes e descrição.
 - Publicação (pedido do usuário em 2026-11-13, vale sempre): toda versão nova deve ser publicada no main
   sem perguntar, e as antigas continuam disponíveis. O workflow cria uma Release numerada por versão
   (tag vX.Y.Z, arquivo AutoTV-X.Y.Z.apk, nunca apagada) e a marca como a mais recente do GitHub. Por isso, subir o

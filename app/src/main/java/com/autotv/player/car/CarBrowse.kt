@@ -270,6 +270,7 @@ class CarBrowsePresentation(
         if (::scroll.isInitialized) onScrollSaved(scroll.scrollY)
         scope.cancel()
         handler.removeCallbacksAndMessages(null)
+        smooth.cancel()
         try { dismiss() } catch (_: Exception) { }
     }
 
@@ -297,13 +298,15 @@ class CarBrowsePresentation(
         }, 50)
     }
 
-    override fun onScroll(distanceX: Float, distanceY: Float) {
-        if (::scroll.isInitialized) scroll.scrollBy(0, distanceY.roundToInt())
-    }
+    private val smooth = SmoothScroll(
+        target = { if (::scroll.isInitialized) scroll else null },
+        fling = { v, speed -> (v as ScrollView).fling(speed) },
+        stop = { v -> (v as ScrollView).fling(0) }
+    )
 
-    override fun onFling(velocityX: Float, velocityY: Float) {
-        if (::scroll.isInitialized) scroll.fling(-velocityY.roundToInt())
-    }
+    override fun onScroll(distanceX: Float, distanceY: Float) = smooth.drag(distanceY)
+
+    override fun onFling(velocityX: Float, velocityY: Float) = smooth.release(velocityY)
 
     fun showMessage(text: String) {
         pendingItems = null

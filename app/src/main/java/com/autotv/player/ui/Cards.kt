@@ -119,7 +119,7 @@ fun MediaList(vm: MainViewModel, items: List<Item>, modifier: Modifier = Modifie
     val favIds = remember(favs) { favs.map { it.id }.toSet() }
     LazyColumn(modifier.fillMaxSize()) {
         if (header != null) item { header() }
-        itemsIndexed(items, key = { i, it -> "${it.id}#$i" }) { index, item ->
+        itemsIndexed(items, key = { i, it -> "${it.id}#$i" }, contentType = { _, it -> it.kind }) { index, item ->
             if (item.kind == Kind.YOUTUBE) {
                 VideoCard(item, item.id in favIds, { vm.play(items, index) }, { vm.toggleFavorite(item) })
             } else {

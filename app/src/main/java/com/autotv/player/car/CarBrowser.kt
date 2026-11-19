@@ -190,13 +190,21 @@ class CarBrowserPresentation(
         }, 50)
     }
 
+    private val smooth = SmoothScroll(
+        target = { if (::web.isInitialized) web else null },
+        fling = { v, speed -> (v as WebView).flingScroll(0, speed) },
+        stop = { v -> (v as WebView).flingScroll(0, 0) }
+    )
+
     override fun onScroll(distanceX: Float, distanceY: Float) {
-        if (::web.isInitialized) web.scrollBy(distanceX.roundToInt(), distanceY.roundToInt())
+        // Páginas largas: o deslocamento lateral vai direto; o vertical é suavizado.
+        if (::web.isInitialized && kotlin.math.abs(distanceX) > kotlin.math.abs(distanceY)) {
+            web.scrollBy(distanceX.roundToInt(), 0); return
+        }
+        smooth.drag(distanceY)
     }
 
-    override fun onFling(velocityX: Float, velocityY: Float) {
-        if (::web.isInitialized) web.flingScroll(-velocityX.roundToInt(), -velocityY.roundToInt())
-    }
+    override fun onFling(velocityX: Float, velocityY: Float) = smooth.release(velocityY)
 
     // ------------------------------------------------------------------ construção
 
