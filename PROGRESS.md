@@ -1,5 +1,5 @@
 # Estado do projeto (para retomar após limite de uso)
-Última atualização: 2026-11-19 (v1.0.1).
+Última atualização: 2026-11-22 (v1.0.2).
 
 - Repositório: github.com/snakemoral/AutoTV, branch main. Cada push compila sozinho (GitHub Actions) e
   publica o APK numa Release por versão (AutoTV-X.Y.Z.apk), marcada como a mais recente. Trabalhar no clone em /home/claude/autotv-repo.
@@ -129,6 +129,9 @@
   sem páginas, rolagem por arrasto, botão ic_close). Rolagem: car/SmoothScroll.kt distribui o arrasto do
   Android Auto pelos quadros, para arremessos antigos ao arrastar e modera/limita a velocidade do arremesso;
   usado nas listas, navegador, ajustes e descrição.
+- v1.0.2: no BYD Dolphin a lista do carro subia e voltava ao arrastar (no Tiggo 5x estava certo).
+  SmoothScroll agora força o arremesso na direção do arrasto recente (velocidade com sinal trocado) e ignora
+  arrastos ao contrário por 180 ms depois de soltar. Não testado no carro.
 - Publicação (pedido do usuário em 2026-11-13, vale sempre): toda versão nova deve ser publicada no main
   sem perguntar, e as antigas continuam disponíveis. O workflow cria uma Release numerada por versão
   (tag vX.Y.Z, arquivo AutoTV-X.Y.Z.apk, nunca apagada) e a marca como a mais recente do GitHub. Por isso, subir o
