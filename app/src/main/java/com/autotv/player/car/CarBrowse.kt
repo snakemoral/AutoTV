@@ -274,15 +274,25 @@ class CarBrowsePresentation(
         try { dismiss() } catch (_: Exception) { }
     }
 
+    private var lastInsets: List<Int>? = null
+
     override fun setInsets(left: Int, top: Int, right: Int, bottom: Int) {
         if (!::content.isInitialized) return
+        // Mesmas margens de antes: nada a refazer (refazer a lista a fazia voltar ao topo).
+        val now = listOf(left, top, right, bottom)
+        if (now == lastInsets) return
+        lastInsets = now
         // O Android Auto reserva a faixa de cima inteira por causa do botão dele (a lupa), que fica só no
         // canto direito. As abas sobem para essa faixa e só deixam livre o espaço do botão.
         stripReserve = if (top > 0) top + dp(4) else 0
         content.setPadding(left + dp(10), dp(8), right + dp(10), bottom)
         chipBox?.setPadding(0, 0, stripReserve, 0)
         titleBar?.setPadding(0, 0, stripReserve, 0)
-        rebuild()
+        // As abas sempre se refazem (a largura livre mudou). A lista só se refaz se a largura dela mudar,
+        // e continua na posição em que estava.
+        renderChips()
+        if (::scroll.isInitialized && restoreScroll == 0) restoreScroll = scroll.scrollY
+        render()
     }
 
     override fun dispatchTap(x: Float, y: Float) {
@@ -319,8 +329,12 @@ class CarBrowsePresentation(
      * usado nas rádios, que têm logotipo em vez de miniatura de vídeo.
      */
     fun showItems(items: List<Item>, compact: Boolean = false) {
+        val list = items.take(if (compact) MAX_COMPACT_ITEMS else MAX_ITEMS)
+        // A mesma lista de novo (por exemplo, quando muda o que está tocando): fica como está, na mesma
+        // posição, sem baixar as imagens outra vez.
+        if (list == pendingItems && compact == this.compact && pendingMessage == null && builtFor > 0) return
         this.compact = compact
-        pendingItems = items.take(if (compact) MAX_COMPACT_ITEMS else MAX_ITEMS)
+        pendingItems = list
         pendingMessage = null
         builtFor = -1
         render()

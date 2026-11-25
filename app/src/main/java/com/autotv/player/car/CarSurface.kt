@@ -60,6 +60,9 @@ object CarSurface {
         override fun onVisibleAreaChanged(visibleArea: Rect) {}
 
         override fun onStableAreaChanged(stableArea: Rect) {
+            // Algumas multimídias (visto num BYD Dolphin Mini) repetem este aviso com a mesma área durante o
+            // toque; repassá-lo refazia a lista e a jogava de volta para o topo no meio do arrasto.
+            if (stableArea == stable) return
             stable = Rect(stableArea)
             client?.insets(stable)
         }
